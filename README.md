@@ -1,8 +1,8 @@
-<img src="assets/lather.png" alt="Mint bar of soap stamped with a terminal prompt" width="64" height="64" align="right">
+<img src="assets/lather.png" alt="Mint terminal prompt" width="64" height="64" align="right">
 
 # Lather
 
-Improve code quality one commit at a time. Lather runs your existing checks, suggests a small improvement, and verifies the commit against a fixed baseline. Use it from the terminal or over MCP.
+Lather runs your project's checks, suggests a small improvement, and verifies the commit against a fixed baseline. Use it from the terminal or over MCP.
 
 ```sh
 cargo install lather-cli --locked
