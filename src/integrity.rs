@@ -25,7 +25,8 @@ pub fn policy_path(path: &str) -> bool {
         || (name.starts_with("tsconfig") && name.ends_with(".json"))
         || matches!(
             name,
-            "hygiene.toml"
+            "lather.toml"
+                | "hygiene.toml"
                 | "rust-toolchain"
                 | "rust-toolchain.toml"
                 | "Cargo.toml"

@@ -5,7 +5,7 @@ use crate::model::{
 use crate::repo::{Repo, valid_id};
 use crate::{
     measure, propose,
-    store::{DATABASE_FILE, Store},
+    store::{DATABASE_FILE, LEGACY_DATABASE_FILE, Store},
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -36,7 +36,7 @@ pub struct Proposal {
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
-    Climb,
+    Scrub,
     Repair,
     ReadyForBaseline,
     Exhausted,
@@ -51,20 +51,39 @@ pub struct Trend {
     pub score_basis_points: Option<u32>,
 }
 
+const WASHLIST_FILE: &str = "washlist.toml";
+const LEGACY_WASHLIST_FILE: &str = "repos.toml";
+
 impl Service {
     pub fn open() -> Result<Self> {
-        let path_override = |name, legacy| {
-            std::env::var_os(name)
-                .or_else(|| std::env::var_os(legacy))
-                .map(PathBuf::from)
-        };
-        let state = match path_override("LATHER_HOME", "HYGIENE_CLIMB_HOME") {
+        let state = match path_override(&["LATHER_HOME", "HYGIENE_CLIMB_HOME"]) {
             Some(path) => path,
-            None => data_directory("XDG_STATE_HOME", ".local/state", DATABASE_FILE)?,
+            None => data_directory(
+                "XDG_STATE_HOME",
+                ".local/state",
+                &[DATABASE_FILE, LEGACY_DATABASE_FILE],
+            )?,
         };
-        let registry = match path_override("LATHER_REGISTRY", "HYGIENE_CLIMB_REGISTRY") {
+        let registry = match path_override(&[
+            "LATHER_WASHLIST",
+            "LATHER_REGISTRY",
+            "HYGIENE_CLIMB_REGISTRY",
+        ]) {
             Some(path) => path,
-            None => data_directory("XDG_CONFIG_HOME", ".config", "repos.toml")?.join("repos.toml"),
+            None => {
+                let directory = data_directory(
+                    "XDG_CONFIG_HOME",
+                    ".config",
+                    &[WASHLIST_FILE, LEGACY_WASHLIST_FILE],
+                )?;
+                let washlist = directory.join(WASHLIST_FILE);
+                let legacy = directory.join(LEGACY_WASHLIST_FILE);
+                if !washlist.try_exists().code("PATH_IO")? && legacy.try_exists().code("PATH_IO")? {
+                    legacy
+                } else {
+                    washlist
+                }
+            }
         };
         Ok(Self {
             store: Store::open(&state)?,
@@ -161,7 +180,7 @@ impl Service {
                 None => (Mode::ReadyForBaseline, None),
             }
         } else if let Some(candidate) = propose::highest_gain(baseline.tip, &tip, &anchor) {
-            (Mode::Climb, Some(candidate))
+            (Mode::Scrub, Some(candidate))
         } else {
             (Mode::Exhausted, None)
         };
@@ -258,7 +277,11 @@ impl Service {
     }
 }
 
-fn data_directory(xdg_key: &str, fallback: &str, filename: &str) -> Result<PathBuf> {
+fn path_override(names: &[&str]) -> Option<PathBuf> {
+    names.iter().find_map(std::env::var_os).map(PathBuf::from)
+}
+
+fn data_directory(xdg_key: &str, fallback: &str, filenames: &[&str]) -> Result<PathBuf> {
     let parent = match std::env::var_os(xdg_key) {
         Some(parent) => PathBuf::from(parent),
         None => std::env::var_os("HOME")
@@ -272,10 +295,15 @@ fn data_directory(xdg_key: &str, fallback: &str, filename: &str) -> Result<PathB
     };
     let lather = parent.join("lather");
     let legacy = parent.join("hygiene-climb");
-    if !lather.join(filename).try_exists().code("PATH_IO")?
-        && legacy.join(filename).try_exists().code("PATH_IO")?
-    {
-        return Ok(legacy);
+    for filename in filenames {
+        if lather.join(filename).try_exists().code("PATH_IO")? {
+            return Ok(lather);
+        }
+    }
+    for filename in filenames {
+        if legacy.join(filename).try_exists().code("PATH_IO")? {
+            return Ok(legacy);
+        }
     }
     Ok(lather)
 }
@@ -305,7 +333,7 @@ fn repair_decision(before: &Snapshot, after: &Snapshot) -> (Decision, String) {
         old.status == Status::Fail && new.status != Status::Blocked && new.debt < old.debt
     }) {
         let reason = if after.green() {
-            "All gates pass. Start a new baseline to begin scoring"
+            "All gates pass. Run soak to start a scoring baseline"
         } else {
             "Hard-gate debt decreased"
         };
