@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 mod cli;
 mod integrity;
 mod measure;
@@ -5,6 +7,7 @@ mod model;
 mod process;
 mod propose;
 mod repo;
+mod rust_policy;
 mod service;
 mod signals;
 mod store;

@@ -1,15 +1,13 @@
 use crate::model::{
     Baseline, Candidate, Decision, Error, Result, Snapshot, Status, StoredSnapshot, Verification,
-    WithCode,
 };
 use crate::repo::{Repo, valid_id};
-use crate::{
-    measure, propose,
-    store::{DATABASE_FILES, Store},
-};
+use crate::{measure, propose, store::Store};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::path::PathBuf;
+
+mod paths;
 
 pub struct Service {
     pub store: Store,
@@ -51,34 +49,9 @@ pub struct Trend {
     pub score_basis_points: Option<u32>,
 }
 
-const REGISTRY_FILES: &[&str] = &["repositories.toml", "washlist.toml", "repos.toml"];
-
 impl Service {
     pub fn open() -> Result<Self> {
-        let state = match path_override(&["LATHER_HOME", "HYGIENE_CLIMB_HOME"]) {
-            Some(path) => path,
-            None => data_directory("XDG_STATE_HOME", ".local/state", DATABASE_FILES)?,
-        };
-        let registry = match path_override(&[
-            "LATHER_REPOS",
-            "LATHER_WASHLIST",
-            "LATHER_REGISTRY",
-            "HYGIENE_CLIMB_REGISTRY",
-        ]) {
-            Some(path) => path,
-            None => {
-                let directory = data_directory("XDG_CONFIG_HOME", ".config", REGISTRY_FILES)?;
-                let mut registry = directory.join(REGISTRY_FILES[0]);
-                for filename in REGISTRY_FILES {
-                    let candidate = directory.join(filename);
-                    if candidate.try_exists().code("PATH_IO")? {
-                        registry = candidate;
-                        break;
-                    }
-                }
-                registry
-            }
-        };
+        let (state, registry) = paths::resolve()?;
         Ok(Self {
             store: Store::open(&state)?,
             registry,
@@ -216,6 +189,7 @@ impl Service {
         let (decision, reason) = if !after.comparable(&anchor)
             || !after.complete()
             || (!baseline.repair_mode && !after.metric_issues.is_empty())
+            || (before.rust_unsafe_policy.is_some() && after.rust_unsafe_policy.is_none())
         {
             (
                 Decision::Inconclusive,
@@ -239,6 +213,11 @@ impl Service {
                 Decision::Rejected,
                 "The number of ignored tests increased or a previously executed test disappeared"
                     .into(),
+            )
+        } else if after.rust_policy_regressed(&before) {
+            (
+                Decision::Rejected,
+                "A Rust crate root lost its unsafe-code policy".into(),
             )
         } else if baseline.repair_mode {
             repair_decision(&before, &after)
@@ -269,37 +248,6 @@ impl Service {
             &after,
         )
     }
-}
-
-fn path_override(names: &[&str]) -> Option<PathBuf> {
-    names.iter().find_map(std::env::var_os).map(PathBuf::from)
-}
-
-fn data_directory(xdg_key: &str, fallback: &str, filenames: &[&str]) -> Result<PathBuf> {
-    let parent = match std::env::var_os(xdg_key) {
-        Some(parent) => PathBuf::from(parent),
-        None => std::env::var_os("HOME")
-            .map(|home| PathBuf::from(home).join(fallback))
-            .ok_or_else(|| {
-                Error::new(
-                    "CONFIG_INVALID",
-                    "HOME is required when XDG paths are unset",
-                )
-            })?,
-    };
-    let lather = parent.join("lather");
-    let legacy = parent.join("hygiene-climb");
-    for filename in filenames {
-        if lather.join(filename).try_exists().code("PATH_IO")? {
-            return Ok(lather);
-        }
-    }
-    for filename in filenames {
-        if legacy.join(filename).try_exists().code("PATH_IO")? {
-            return Ok(legacy);
-        }
-    }
-    Ok(lather)
 }
 
 fn test_inventory_regressed(before: &Snapshot, after: &Snapshot) -> bool {

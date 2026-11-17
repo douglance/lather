@@ -1,5 +1,6 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -104,6 +105,8 @@ pub struct Snapshot {
     #[serde(default)]
     pub strict_flags: Option<Vec<String>>,
     #[serde(default)]
+    pub rust_unsafe_policy: Option<BTreeMap<String, bool>>,
+    #[serde(default)]
     pub metric_issues: Vec<String>,
     pub test_inventory: Vec<String>,
     pub ignored_tests: u64,
@@ -115,6 +118,7 @@ pub struct Projection {
     pub fewer_exits: usize,
     pub fewer_unused: usize,
     pub more_strict_flags: usize,
+    pub fewer_unprotected_rust_roots: usize,
 }
 
 impl Snapshot {
@@ -183,6 +187,19 @@ impl Snapshot {
             }
             _ => return None,
         }
+        match (&self.rust_unsafe_policy, &anchor.rust_unsafe_policy) {
+            (Some(roots), Some(initial)) => {
+                if !roots.is_empty() {
+                    let debt = unprotected_roots(roots)
+                        .saturating_sub(projection.fewer_unprotected_rust_roots);
+                    let denominator = unprotected_roots(initial).max(1);
+                    weight += 20;
+                    score += 20 * normalized(debt as u128, denominator as u128);
+                }
+            }
+            (None, None) => {}
+            _ => return None,
+        }
         Some(score / weight)
     }
 
@@ -200,11 +217,31 @@ impl Snapshot {
                 .is_some_and(|(old, new)| old.iter().any(|flag| !new.contains(flag)))
     }
 
+    pub fn rust_policy_regressed(&self, before: &Self) -> bool {
+        before
+            .rust_unsafe_policy
+            .as_ref()
+            .zip(self.rust_unsafe_policy.as_ref())
+            .is_some_and(|(old, new)| {
+                old.iter()
+                    .any(|(path, enforced)| *enforced && new.get(path) != Some(&true))
+            })
+    }
+
     pub fn comparable(&self, other: &Self) -> bool {
         self.repo == other.repo
             && self.environment == other.environment
             && self.policy == other.policy
+            && self
+                .rust_unsafe_policy
+                .as_ref()
+                .zip(other.rust_unsafe_policy.as_ref())
+                .is_none_or(|(left, right)| left.keys().eq(right.keys()))
     }
+}
+
+fn unprotected_roots(roots: &BTreeMap<String, bool>) -> usize {
+    roots.values().filter(|enforced| !**enforced).count()
 }
 
 fn normalized(debt: u128, denominator: u128) -> u32 {

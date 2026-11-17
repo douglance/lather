@@ -30,10 +30,31 @@ fn snapshot(excess_lines: u64, lint_debt: u64, formatting_debt: u64) -> Snapshot
         unchecked_exits: None,
         unused_items: None,
         strict_flags: None,
+        rust_unsafe_policy: None,
         metric_issues: Vec::new(),
         test_inventory: vec!["example".into()],
         ignored_tests: 0,
     }
+}
+
+#[test]
+fn rust_policy_score_rewards_additions_and_guards_existing_roots() {
+    let mut anchor = snapshot(0, 0, 0);
+    anchor.rust_unsafe_policy = Some([("a.rs".into(), true), ("b.rs".into(), false)].into());
+    let mut improved = anchor.clone();
+    improved.rust_unsafe_policy = Some([("a.rs".into(), true), ("b.rs".into(), true)].into());
+    assert_eq!(anchor.score(&anchor), Some(2_000));
+    assert_eq!(improved.score(&anchor), Some(10_000));
+    assert!(!improved.rust_policy_regressed(&anchor));
+
+    let mut swapped = anchor.clone();
+    swapped.rust_unsafe_policy = Some([("a.rs".into(), false), ("b.rs".into(), true)].into());
+    assert!(swapped.rust_policy_regressed(&anchor));
+
+    let mut removed = anchor.clone();
+    removed.rust_unsafe_policy = Some([("a.rs".into(), true)].into());
+    assert!(!removed.comparable(&anchor));
+    assert_eq!(removed.score(&anchor), None);
 }
 
 #[test]
