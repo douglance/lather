@@ -2,7 +2,7 @@ use crate::model::{Error, Gate, Result, Snapshot, Status, UnusedItem};
 use crate::{
     process,
     repo::{Profile, Repo},
-    signals, typescript,
+    rust_policy, signals, typescript,
 };
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -87,6 +87,8 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
         }
     };
     gates.push(test_gate);
+    let mut metric_issues = metrics.issues;
+    let rust_unsafe_policy = rust_policy::observe(repo, &mut metric_issues);
     if repo.identity()? != identity {
         return Err(Error::new(
             "WORKTREE_CHANGED",
@@ -110,7 +112,8 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
         unchecked_exits: rust.then_some(metrics.unchecked_exits),
         unused_items,
         strict_flags,
-        metric_issues: metrics.issues,
+        rust_unsafe_policy,
+        metric_issues,
         test_inventory,
         ignored_tests,
     })
@@ -118,7 +121,7 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
 
 fn environment(repo: &Repo) -> String {
     let mut hash = Sha256::new();
-    hash.update(b"rust-length-exits-unused-v5\0");
+    hash.update(b"rust-length-exits-unused-unsafe-policy-v6\0");
     for (program, args) in [
         ("cargo", &["-V"][..]),
         ("rustc", &["-vV"][..]),

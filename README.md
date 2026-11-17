@@ -64,9 +64,15 @@ lather verify example --worktree dev --baseline "$BASELINE_ID" \
   --against "$TIP" --commit "$(git rev-parse HEAD)"
 ```
 
-The sample commit was accepted. All four gates passed, and the score rose from 80% to 100%.
+Lather 0.2.0 accepted the sample commit. All four gates passed, and the score rose from 80% to 100%.
 
 A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all four gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, create a new baseline to begin scoring.
+
+### Rust unsafe-code policy
+
+Build Lather from this checkout and create a fresh Rust baseline to score unsafe-code policy. Lather checks each workspace library and binary crate root for unconditional `#![forbid(unsafe_code)]`, a package Cargo lint at level `forbid`, or the same lint inherited from the workspace. The `rust_unsafe_policy` field in `spot-check --json` maps crate-root paths to the observed policy.
+
+Conditional and module-level attributes leave the crate root uncredited. The measurement covers workspace targets and their declared policies. When Lather cannot read a target or its manifest, the scan reports a metric issue and the snapshot cannot be scored.
 
 ## Command reference
 

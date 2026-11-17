@@ -5,6 +5,7 @@ mod model;
 mod process;
 mod propose;
 mod repo;
+mod rust_policy;
 mod service;
 mod signals;
 mod store;

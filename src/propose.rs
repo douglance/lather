@@ -95,6 +95,34 @@ pub fn highest_gain(id: i64, tip: &Snapshot, anchor: &Snapshot) -> Option<Candid
         ));
     }
 
+    if let Some(path) = tip
+        .rust_unsafe_policy
+        .as_ref()
+        .and_then(|roots| {
+            roots
+                .iter()
+                .find_map(|(path, enforced)| (!enforced).then_some(path))
+        })
+        .filter(|_| max_diff >= 2)
+    {
+        let gain = tip
+            .projected_score(
+                anchor,
+                Projection {
+                    fewer_unprotected_rust_roots: 1,
+                    ..Projection::default()
+                },
+            )?
+            .saturating_sub(current);
+        options.push((
+            gain,
+            2,
+            "forbid_unsafe_code",
+            path.clone(),
+            "Review unsafe usage and add #![forbid(unsafe_code)] to the crate root".into(),
+        ));
+    }
+
     let (gain, _, kind, subject, detail) =
         options.into_iter().filter(|(gain, ..)| *gain > 0).max_by(
             |(gain, cost, kind, subject, _),

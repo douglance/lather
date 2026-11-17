@@ -189,6 +189,7 @@ impl Service {
         let (decision, reason) = if !after.comparable(&anchor)
             || !after.complete()
             || (!baseline.repair_mode && !after.metric_issues.is_empty())
+            || (before.rust_unsafe_policy.is_some() && after.rust_unsafe_policy.is_none())
         {
             (
                 Decision::Inconclusive,
@@ -212,6 +213,11 @@ impl Service {
                 Decision::Rejected,
                 "The number of ignored tests increased or a previously executed test disappeared"
                     .into(),
+            )
+        } else if after.rust_policy_regressed(&before) {
+            (
+                Decision::Rejected,
+                "A Rust crate root lost its unsafe-code policy".into(),
             )
         } else if baseline.repair_mode {
             repair_decision(&before, &after)
