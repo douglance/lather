@@ -1,0 +1,33 @@
+[package]
+name = "lather-cli"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Measure code hygiene and verify small improvements against a fixed baseline."
+license = "MIT"
+repository = "https://github.com/douglance/lather"
+readme = "README.md"
+keywords = ["code-quality", "lint", "refactoring", "mcp", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+include = ["/src/", "/README.md", "/LICENSE"]
+publish = ["crates-io"]
+
+[[bin]]
+name = "lather"
+path = "src/main.rs"
+
+[dependencies]
+incurs = { version = "=0.14.0", features = ["mcp"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+proc-macro2 = { version = "1", features = ["span-locations"] }
+quote = "1"
+sha2 = "0.10"
+syn = { version = "2", features = ["full", "visit"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "0.9"
+thiserror = "2"
+wait-timeout = "0.2"
+tempfile = "3"
