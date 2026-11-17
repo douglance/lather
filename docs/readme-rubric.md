@@ -17,8 +17,8 @@ Each row is worth one point when its evidence meets the full pass condition. A m
 
 | # | Criterion | Pass condition |
 | ---: | --- | --- |
-| 1 | Distinctive mark | The icon reads as a bar of soap and shows a terminal prompt. It works without a wordmark. |
-| 2 | Small-size legibility | Both parts of the terminal prompt and the soap silhouette remain distinguishable at 24 and 32 px against light and dark backgrounds. |
+| 1 | Distinctive mark | The mint terminal mark suggests a command-line tool and stands on its own. The branding uses a simple shape and leaves the hygiene reference in the name. |
+| 2 | Small-size legibility | Both parts of the terminal prompt and the tile outline remain distinguishable at 24 and 32 px against light and dark backgrounds. |
 | 3 | Accessible, portable image | The README supplies useful alt text. Its local transparent PNG is square, at most 100 KiB, and present in the crate archive. |
 | 4 | Clear first screen | A desktop reader sees the name, the job Lather does, the install command, and the first action. The compact layout stays readable in a narrow viewport. |
 | 5 | Install and setup | The README names the crate and executable, identifies the Linux requirement, and gives complete repository registry syntax and both profile prerequisites. |
