@@ -36,6 +36,7 @@ impl<T> Reply<T> {
 
 pub fn command<A, O, T>(
     name: &str,
+    alias: Option<&str>,
     description: &str,
     handler: fn(A, O) -> Result<Reply<T>>,
 ) -> CommandDef
@@ -69,5 +70,6 @@ where
         }
     })
     .description(description)
+    .command_aliases(alias.into_iter().map(str::to_owned).collect())
     .done()
 }

@@ -2,14 +2,14 @@
 
 # Lather
 
-Measure code hygiene one commit at a time. Lather runs your existing checks, suggests a small improvement, and verifies the commit against a fixed baseline. Use it from the terminal or over MCP.
+Improve code quality one commit at a time. Lather runs your existing checks, suggests a small improvement, and verifies the commit against a fixed baseline. Use it from the terminal or over MCP.
 
 ```sh
 cargo install lather-cli --locked
 lather --help
 ```
 
-[Set up a worktree](#set-up-a-worktree) · [Run the wash cycle](#run-the-wash-cycle) · [Connect an MCP client](#mcp)
+[Set up a worktree](#set-up-a-worktree) · [Verify a change](#verify-a-change) · [Connect an MCP client](#mcp)
 
 ## Set up a worktree
 
@@ -20,7 +20,7 @@ Use Rust 1.88 or later to install Lather. Run it on Linux with Git. Register onl
 
 Keep Rust and TypeScript/JavaScript in separate worktree roots. The Node test gate runs tracked `*.test.*`, `*.spec.*`, and `test-*` files with supported JavaScript or TypeScript extensions.
 
-Save this as `${XDG_CONFIG_HOME:-$HOME/.config}/lather/washlist.toml` and replace the absolute path:
+Save this as `${XDG_CONFIG_HOME:-$HOME/.config}/lather/repositories.toml` and replace the absolute path:
 
 ```toml
 schema_version = 1
@@ -33,7 +33,7 @@ id = "dev"
 root = "/absolute/path/to/example"
 ```
 
-## Run the wash cycle
+## Verify a change
 
 **Spot-check** the worktree. This example shows the four gates and an unchecked Rust exit in a sample project:
 
@@ -50,37 +50,37 @@ Summary of the sample JSON response:
 }
 ```
 
-**Soak** to save a baseline, then **scrub** to get one proposed improvement. Use the baseline `id` returned by `soak`.
+Save a baseline, then request one improvement. Set `BASELINE_ID` to the `id` returned by `baseline`.
 
 ```sh
-lather soak example --worktree dev --name initial
-lather scrub example --worktree dev --baseline "$BASELINE_ID"
+lather baseline example --worktree dev --name initial
+lather suggest example --worktree dev --baseline "$BASELINE_ID"
 ```
 
-**Rinse** after making and committing the change. In this sample, invalid port input should return zero, so the change replaces `value.parse().unwrap()` with `value.parse().unwrap_or_default()`. Set `TIP` to the `tip` snapshot ID returned by `scrub`, then run this from the registered worktree:
+Verify after making and committing the change. In this sample, invalid port input should return zero, so the change replaces `value.parse().unwrap()` with `value.parse().unwrap_or_default()`. Set `TIP` to the `tip` snapshot ID returned by `suggest`, then run this from the registered worktree:
 
 ```sh
-lather rinse example --worktree dev --baseline "$BASELINE_ID" \
+lather verify example --worktree dev --baseline "$BASELINE_ID" \
   --against "$TIP" --commit "$(git rev-parse HEAD)"
 ```
 
 The sample commit was accepted. All four gates passed, and the score rose from 80% to 100%.
 
-A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all four gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, run `soak` again to begin scoring.
+A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all four gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, create a new baseline to begin scoring.
 
 ## Command reference
 
 | Command | What it does |
 | --- | --- |
 | `spot-check` | Run type or compile checks, lint, formatting, and tests. Show findings. |
-| `soak` | Save a baseline for scoring or gate repair. |
-| `scrub` | Suggest one change for the current baseline tip. |
-| `rinse` | Verify and record a committed change. |
-| `shine` | Score a stored snapshot against a baseline. |
-| `wash-log` | Read the verification history for a repository. |
-| `wash-report` | Compare baseline trends across registered worktrees. |
+| `baseline` | Save a baseline for scoring or gate repair. |
+| `suggest` | Suggest one change for the current baseline tip. |
+| `verify` | Verify and record a committed change. |
+| `score` | Score a stored snapshot against a baseline. |
+| `history` | Read the verification history for a repository. |
+| `report` | Compare baseline trends across registered worktrees. |
 
-`rinse` returns `0` for accepted, `1` for a command error, `2` for rejected, `3` for inconclusive, and `4` for repair progress. Checks detect removed tests, new Rust suppressions, and weaker TypeScript compiler settings.
+`verify` returns `0` for accepted, `1` for a command error, `2` for rejected, `3` for inconclusive, and `4` for repair progress. Checks detect removed tests, new Rust suppressions, and weaker TypeScript compiler settings.
 
 ## Configuration
 
@@ -92,10 +92,12 @@ file_lines = 500
 max_diff_lines = 100
 ```
 
-Set `LATHER_WASHLIST` to use a different washlist. Set `LATHER_HOME` to move `wash-log.sqlite3` out of `${XDG_STATE_HOME:-$HOME/.local/state}/lather`. Existing development installs can still read their `hygiene.toml`, `repos.toml`, and `hygiene.sqlite3` files.
+Set `LATHER_REPOS` to use a different repository registry. Set `LATHER_HOME` to store `history.sqlite3` in a different directory. The default is `${XDG_STATE_HOME:-$HOME/.local/state}/lather`.
 
 ## MCP
 
-Start the stdio server with `lather --mcp`. It exposes the seven commands above. Use `lather --llms` for command discovery, `lather rinse --schema` for typed inputs and outputs, and `--json` for structured CLI results.
+Start the stdio server with `lather --mcp`. It exposes the seven commands above. Use `lather --llms` for command discovery, `lather verify --schema` for typed inputs and outputs, and `--json` for structured CLI results.
+
+If you're upgrading from 0.1.0, your CLI commands, configuration, and history still work. Refresh the tool list in your MCP client and update any tool names you call directly.
 
 [MIT license](LICENSE)

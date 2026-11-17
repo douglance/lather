@@ -5,7 +5,7 @@ use crate::model::{
 use crate::repo::{Repo, valid_id};
 use crate::{
     measure, propose,
-    store::{DATABASE_FILE, LEGACY_DATABASE_FILE, Store},
+    store::{DATABASE_FILES, Store},
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -51,38 +51,32 @@ pub struct Trend {
     pub score_basis_points: Option<u32>,
 }
 
-const WASHLIST_FILE: &str = "washlist.toml";
-const LEGACY_WASHLIST_FILE: &str = "repos.toml";
+const REGISTRY_FILES: &[&str] = &["repositories.toml", "washlist.toml", "repos.toml"];
 
 impl Service {
     pub fn open() -> Result<Self> {
         let state = match path_override(&["LATHER_HOME", "HYGIENE_CLIMB_HOME"]) {
             Some(path) => path,
-            None => data_directory(
-                "XDG_STATE_HOME",
-                ".local/state",
-                &[DATABASE_FILE, LEGACY_DATABASE_FILE],
-            )?,
+            None => data_directory("XDG_STATE_HOME", ".local/state", DATABASE_FILES)?,
         };
         let registry = match path_override(&[
+            "LATHER_REPOS",
             "LATHER_WASHLIST",
             "LATHER_REGISTRY",
             "HYGIENE_CLIMB_REGISTRY",
         ]) {
             Some(path) => path,
             None => {
-                let directory = data_directory(
-                    "XDG_CONFIG_HOME",
-                    ".config",
-                    &[WASHLIST_FILE, LEGACY_WASHLIST_FILE],
-                )?;
-                let washlist = directory.join(WASHLIST_FILE);
-                let legacy = directory.join(LEGACY_WASHLIST_FILE);
-                if !washlist.try_exists().code("PATH_IO")? && legacy.try_exists().code("PATH_IO")? {
-                    legacy
-                } else {
-                    washlist
+                let directory = data_directory("XDG_CONFIG_HOME", ".config", REGISTRY_FILES)?;
+                let mut registry = directory.join(REGISTRY_FILES[0]);
+                for filename in REGISTRY_FILES {
+                    let candidate = directory.join(filename);
+                    if candidate.try_exists().code("PATH_IO")? {
+                        registry = candidate;
+                        break;
+                    }
                 }
+                registry
             }
         };
         Ok(Self {
@@ -333,7 +327,7 @@ fn repair_decision(before: &Snapshot, after: &Snapshot) -> (Decision, String) {
         old.status == Status::Fail && new.status != Status::Blocked && new.debt < old.debt
     }) {
         let reason = if after.green() {
-            "All gates pass. Run soak to start a scoring baseline"
+            "All gates pass. Run baseline to start scoring"
         } else {
             "Hard-gate debt decreased"
         };

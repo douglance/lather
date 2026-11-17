@@ -21,9 +21,9 @@ Each row is worth one point when its evidence meets the full pass condition. A m
 | 2 | Small-size legibility | Both parts of the terminal prompt and the soap silhouette remain distinguishable at 24 and 32 px against light and dark backgrounds. |
 | 3 | Accessible, portable image | The README supplies useful alt text. Its local transparent PNG is square, at most 100 KiB, and present in the crate archive. |
 | 4 | Clear first screen | A desktop reader sees the name, the job Lather does, the install command, and the first action. The compact layout stays readable in a narrow viewport. |
-| 5 | Install and setup | The README names the crate and executable, identifies the Linux requirement, and gives complete washlist syntax and both profile prerequisites. |
-| 6 | Reproducible first run | Running the documented spot-check command against a registered clean worktree produces the documented JSON fields and four gate outcomes. |
+| 5 | Install and setup | The README names the crate and executable, identifies the Linux requirement, and gives complete repository registry syntax and both profile prerequisites. |
+| 6 | Reproducible first run | Running the documented first command against a registered clean worktree produces the documented JSON fields and four gate outcomes. |
 | 7 | Real improvement loop | An observed Rust example shows the resulting decision and score change. The documented commands take the reader from baseline to a verified commit. |
 | 8 | Consistent command surface | The README accounts for all seven commands. The CLI and MCP expose matching names, the named config files are used, and the schema flag exposes the cited tool. |
-| 9 | Trust and guardrails | The README identifies trusted worktrees, explains code execution and repair versus scoring, and covers all rinse exit codes. |
+| 9 | Trust and guardrails | The README identifies trusted worktrees, explains code execution and repair versus scoring, and covers all verification exit codes. |
 | 10 | Navigation and restraint | GitHub-rendered Markdown has working section links, a license link, and clear progression from setup to workflow and reference. The rendered hero fits both desktop and narrow views. |
