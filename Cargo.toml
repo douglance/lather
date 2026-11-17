@@ -9,7 +9,7 @@ repository = "https://github.com/douglance/lather"
 readme = "README.md"
 keywords = ["code-quality", "lint", "refactoring", "mcp", "cli"]
 categories = ["command-line-utilities", "development-tools"]
-include = ["/src/", "/README.md", "/LICENSE"]
+include = ["/src/", "/README.md", "/LICENSE", "/assets/lather.png"]
 publish = ["crates-io"]
 
 [[bin]]

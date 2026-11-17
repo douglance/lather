@@ -1,26 +1,26 @@
+<img src="assets/lather.png" alt="Mint bar of soap stamped with a terminal prompt" width="64" height="64" align="right">
+
 # Lather
 
-Lather measures code hygiene, proposes one small improvement, and checks whether a committed change improves the score. Use the CLI directly or drive the same commands through MCP.
-
-## Install
+Measure code hygiene one commit at a time. Lather runs your existing checks, suggests a small improvement, and verifies the commit against a fixed baseline. Use it from the terminal or over MCP.
 
 ```sh
 cargo install lather-cli --locked
 lather --help
 ```
 
-Run repository checks on Linux with Git and the tools for your project. Register only trusted worktrees. Checks can execute repository code, including build scripts and tests.
+[Set up a worktree](#set-up-a-worktree) · [Run the wash cycle](#run-the-wash-cycle) · [Connect an MCP client](#mcp)
 
-| Project | Required tools and configuration | Scored signals |
-| --- | --- | --- |
-| Rust | Cargo, Clippy, rustfmt, and a committed `Cargo.lock`. Cache Rust dependencies before measuring. | Oversized production files, compiler-reported unused items, and unchecked exits such as `unwrap` and `panic!`. |
-| TypeScript or JavaScript | Node 24, a committed `package-lock.json`, root `tsconfig.json`, and local TypeScript, ESLint, and Prettier installed with `npm ci`. JavaScript-only projects need effective `checkJs`. | Oversized production files and effective TypeScript strictness. |
+## Set up a worktree
 
-For JavaScript and TypeScript, Lather runs tracked Node test files named `*.test.*`, `*.spec.*`, or `test-*` in the supported extensions. Use separate worktree roots for Rust and JavaScript/TypeScript projects.
+Use Rust 1.88 or later to install Lather. Run it on Linux with Git. Register only trusted worktrees because checks can execute repository code, including build scripts and tests. Start from a clean, committed worktree.
 
-## Register a worktree
+- **Rust.** Install Cargo, Clippy, and rustfmt. Commit `Cargo.lock` and cache dependencies for offline use. Lather scores oversized files, compiler-reported unused items, and unchecked exits such as `unwrap` and `panic!`.
+- **TypeScript or JavaScript.** Use Node 24, a committed `package-lock.json`, and a root `tsconfig.json`. Install TypeScript, ESLint, and Prettier via `npm ci`. JavaScript-only projects need effective `checkJs`. Lather scores oversized files and TypeScript strictness.
 
-Create `${XDG_CONFIG_HOME:-$HOME/.config}/lather/repos.toml` and set `root` to the absolute path of a clean Git worktree.
+Keep Rust and TypeScript/JavaScript in separate worktree roots. The Node test gate runs tracked `*.test.*`, `*.spec.*`, and `test-*` files with supported JavaScript or TypeScript extensions.
+
+Save this as `${XDG_CONFIG_HOME:-$HOME/.config}/lather/washlist.toml` and replace the absolute path:
 
 ```toml
 schema_version = 1
@@ -33,32 +33,58 @@ id = "dev"
 root = "/absolute/path/to/example"
 ```
 
-Set `LATHER_REGISTRY` to use another registry file or `LATHER_HOME` to override the default state directory at `${XDG_STATE_HOME:-$HOME/.local/state}/lather`. Earlier installations can still use the `hygiene-climb` paths and `HYGIENE_CLIMB_*` overrides.
+## Run the wash cycle
 
-## Lather, rinse, repeat
+**Spot-check** the worktree. This example shows the four gates and an unchecked Rust exit in a sample project:
 
-1. Run `lather scan example --worktree dev` to see the checks and findings.
-2. Run `lather baseline example --worktree dev --name initial` to save a baseline. Pass its ID to `lather next example --worktree dev --baseline "$BASELINE_ID"`.
-3. Make and commit one change. Set `TIP` to the comparison snapshot returned by `next`, then run:
+```sh
+lather spot-check example --worktree dev --json
+```
 
-   ```sh
-   lather verify example --worktree dev --baseline "$BASELINE_ID" \
-     --against "$TIP" --commit "$(git rev-parse HEAD)"
-   ```
+Summary of the sample JSON response:
 
-Run `next` again after an accepted change. Use `lather score` to compare a stored snapshot, `lather history example` to review decisions, or `lather report` to see trends.
+```json
+{
+  "gates": ["pass", "pass", "pass", "pass"],
+  "unchecked_exits": [{"path": "src/lib.rs", "line": 2, "construct": "unwrap"}]
+}
+```
 
-The baseline fixes the scoring denominator for the epoch. Acceptance requires a positive score change with all required checks passing. Checks also guard against losing tests, adding Rust suppressions, and weakening TypeScript compiler settings. A failing baseline opens a repair epoch. Once all gates pass, create a new baseline to begin scoring.
+**Soak** to save a baseline, then **scrub** to get one proposed improvement. Use the baseline `id` returned by `soak`.
 
-| Verify exit code | Result |
+```sh
+lather soak example --worktree dev --name initial
+lather scrub example --worktree dev --baseline "$BASELINE_ID"
+```
+
+**Rinse** after making and committing the change. In this sample, invalid port input should return zero, so the change replaces `value.parse().unwrap()` with `value.parse().unwrap_or_default()`. Set `TIP` to the `tip` snapshot ID returned by `scrub`, then run this from the registered worktree:
+
+```sh
+lather rinse example --worktree dev --baseline "$BASELINE_ID" \
+  --against "$TIP" --commit "$(git rev-parse HEAD)"
+```
+
+The sample commit was accepted. All four gates passed, and the score rose from 80% to 100%.
+
+A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all four gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, run `soak` again to begin scoring.
+
+## Command reference
+
+| Command | What it does |
 | --- | --- |
-| `0` | Accepted |
-| `1` | Command error |
-| `2` | Rejected |
-| `3` | Inconclusive |
-| `4` | Repair progress |
+| `spot-check` | Run type or compile checks, lint, formatting, and tests. Show findings. |
+| `soak` | Save a baseline for scoring or gate repair. |
+| `scrub` | Suggest one change for the current baseline tip. |
+| `rinse` | Verify and record a committed change. |
+| `shine` | Score a stored snapshot against a baseline. |
+| `wash-log` | Read the verification history for a repository. |
+| `wash-report` | Compare baseline trends across registered worktrees. |
 
-Teams can commit a `hygiene.toml` to change the default 500-line file limit and 100-line candidate diff limit:
+`rinse` returns `0` for accepted, `1` for a command error, `2` for rejected, `3` for inconclusive, and `4` for repair progress. Checks detect removed tests, new Rust suppressions, and weaker TypeScript compiler settings.
+
+## Configuration
+
+Commit a `lather.toml` at the worktree root to override the default limits:
 
 ```toml
 schema_version = 1
@@ -66,10 +92,10 @@ file_lines = 500
 max_diff_lines = 100
 ```
 
-## Agents
+Set `LATHER_WASHLIST` to use a different washlist. Set `LATHER_HOME` to move `wash-log.sqlite3` out of `${XDG_STATE_HOME:-$HOME/.local/state}/lather`. Existing development installs can still read their `hygiene.toml`, `repos.toml`, and `hygiene.sqlite3` files.
 
-Start `lather --mcp` for the stdio MCP server. Use `lather --llms` for command discovery, `lather verify --schema` for typed arguments and outputs, or `--json` for structured CLI output.
+## MCP
 
-## License
+Start the stdio server with `lather --mcp`. It exposes the seven commands above. Use `lather --llms` for command discovery, `lather rinse --schema` for typed inputs and outputs, and `--json` for structured CLI results.
 
-[MIT](LICENSE)
+[MIT license](LICENSE)

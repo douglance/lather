@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, incurs::Args)]
 struct RepoArgs {
-    /// Repository ID from the VM registry.
+    /// Repository ID from the washlist.
     repo: String,
 }
 
@@ -53,7 +53,7 @@ struct VerifyOptions {
     worktree: String,
     /// Baseline ID.
     baseline: i64,
-    /// Exact comparison snapshot ID returned by next.
+    /// Exact comparison snapshot ID returned by scrub.
     against: i64,
     /// Full candidate commit SHA.
     commit: String,
@@ -94,6 +94,13 @@ struct HistoryEntry {
 }
 
 const NAME: &str = env!("CARGO_BIN_NAME");
+const SPOT_CHECK: &str = "spot-check";
+const SOAK: &str = "soak";
+const SHINE: &str = "shine";
+const SCRUB: &str = "scrub";
+const RINSE: &str = "rinse";
+const WASH_LOG: &str = "wash-log";
+const WASH_REPORT: &str = "wash-report";
 
 pub fn app() -> Cli {
     Cli::create(NAME)
@@ -106,45 +113,45 @@ pub fn app() -> Cli {
             ..Default::default()
         })
         .command(
-            "scan",
-            command("scan", "Measure a committed worktree", scan),
-        )
-        .command(
-            "baseline",
+            SPOT_CHECK,
             command(
-                "baseline",
-                "Create a frozen scoring anchor or a gate-repair epoch",
-                baseline,
+                SPOT_CHECK,
+                "Run repository checks and measure a committed worktree",
+                scan,
             ),
         )
         .command(
-            "score",
-            command(
-                "score",
-                "Score a snapshot against an immutable baseline",
-                score,
-            ),
+            SOAK,
+            command(SOAK, "Save a baseline for scoring or gate repair", baseline),
         )
         .command(
-            "next",
+            SHINE,
+            command(SHINE, "Score a stored snapshot against a baseline", score),
+        )
+        .command(
+            SCRUB,
             command(
-                "next",
-                "Propose one small improvement at the current tip",
+                SCRUB,
+                "Suggest one small improvement for the current worktree",
                 next,
             ),
         )
         .command(
-            "verify",
-            command("verify", "Check and record a committed candidate", verify),
-        )
-        .command(
-            "history",
-            command("history", "Read a repository's candidate verdicts", history),
-        )
-        .command(
-            "report",
+            RINSE,
             command(
-                "report",
+                RINSE,
+                "Verify and record the result of a committed change",
+                verify,
+            ),
+        )
+        .command(
+            WASH_LOG,
+            command(WASH_LOG, "Read a repository's candidate verdicts", history),
+        )
+        .command(
+            WASH_REPORT,
+            command(
+                WASH_REPORT,
                 "Read baseline trends across measured repositories",
                 report,
             ),
@@ -164,15 +171,18 @@ fn scan(args: RepoArgs, options: WorktreeOptions) -> Result<Reply<StoredSnapshot
     let (command, reason) = if data.snapshot.complete() {
         (
             format!(
-                "{NAME} baseline {} --worktree {} --name initial",
+                "{NAME} {SOAK} {} --worktree {} --name initial",
                 args.repo, options.worktree
             ),
             "Freeze this worktree as a scoring or gate-repair baseline",
         )
     } else {
         (
-            format!("{NAME} scan {} --worktree {}", args.repo, options.worktree),
-            "Resolve the unknown checks and scan again",
+            format!(
+                "{NAME} {SPOT_CHECK} {} --worktree {}",
+                args.repo, options.worktree
+            ),
+            "Resolve the unknown checks and run spot-check again",
         )
     };
     Ok(Reply::new(data, command, reason))
@@ -181,7 +191,7 @@ fn scan(args: RepoArgs, options: WorktreeOptions) -> Result<Reply<StoredSnapshot
 fn baseline(args: RepoArgs, options: BaselineOptions) -> Result<Reply<Baseline>> {
     let data = Service::open()?.baseline(&args.repo, &options.worktree, &options.name)?;
     let command = format!(
-        "{NAME} next {} --worktree {} --baseline {}",
+        "{NAME} {SCRUB} {} --worktree {} --baseline {}",
         args.repo, options.worktree, data.id
     );
     Ok(Reply::new(
@@ -195,7 +205,7 @@ fn score(args: SnapshotArgs, options: ScoreOptions) -> Result<Reply<Score>> {
     let data = Service::open()?.score(args.snapshot, options.baseline)?;
     Ok(Reply::new(
         data,
-        format!("{NAME} report"),
+        format!("{NAME} {WASH_REPORT}"),
         "Review baseline trends",
     ))
 }
@@ -203,22 +213,22 @@ fn score(args: SnapshotArgs, options: ScoreOptions) -> Result<Reply<Score>> {
 fn next(args: RepoArgs, options: NextOptions) -> Result<Reply<Proposal>> {
     let data = Service::open()?.next(&args.repo, &options.worktree, options.baseline)?;
     let (command, reason) = match data.mode {
-        Mode::Climb | Mode::Repair => (
+        Mode::Scrub | Mode::Repair => (
             format!(
-                "{NAME} verify {} --worktree {} --baseline {} --against {} --commit CANDIDATE_SHA",
+                "{NAME} {RINSE} {} --worktree {} --baseline {} --against {} --commit CANDIDATE_SHA",
                 args.repo, options.worktree, options.baseline, data.tip
             ),
             "Apply one change, commit it, and replace CANDIDATE_SHA with its full SHA",
         ),
         Mode::ReadyForBaseline => (
             format!(
-                "{NAME} baseline {} --worktree {} --name green",
+                "{NAME} {SOAK} {} --worktree {} --name green",
                 args.repo, options.worktree
             ),
             "Freeze a green scoring anchor",
         ),
         Mode::Exhausted => (
-            format!("{NAME} history {}", args.repo),
+            format!("{NAME} {WASH_LOG} {}", args.repo),
             "Review completed improvements",
         ),
     };
@@ -237,14 +247,14 @@ fn verify(args: RepoArgs, options: VerifyOptions) -> Result<Reply<Verification>>
     let (command, reason) = match data.decision {
         Decision::Accepted | Decision::RepairProgress => (
             format!(
-                "{NAME} next {} --worktree {} --baseline {}",
+                "{NAME} {SCRUB} {} --worktree {} --baseline {}",
                 args.repo, options.worktree, options.baseline
             ),
             "Continue from this comparison tip",
         ),
         Decision::Rejected | Decision::Inconclusive => (
             format!(
-                "{NAME} score {} --baseline {}",
+                "{NAME} {SHINE} {} --baseline {}",
                 data.after, options.baseline
             ),
             "Inspect the candidate score against this baseline",
@@ -274,7 +284,7 @@ fn history(args: RepoArgs, options: PageOptions) -> Result<Reply<Page<HistoryEnt
             entries,
             next_cursor,
         },
-        format!("{NAME} report"),
+        format!("{NAME} {WASH_REPORT}"),
         "Review baseline trends",
     ))
 }
@@ -290,11 +300,11 @@ fn report(_: (), options: PageOptions) -> Result<Reply<Page<Trend>>> {
         .collect::<Result<Vec<_>>>()?;
     let (command, reason) = match (next_cursor, entries.first()) {
         (Some(cursor), _) => (
-            format!("{NAME} report --before {cursor} --limit {limit}"),
+            format!("{NAME} {WASH_REPORT} --before {cursor} --limit {limit}"),
             "Read the next page",
         ),
         (_, Some(trend)) => (
-            format!("{NAME} history {}", trend.repo),
+            format!("{NAME} {WASH_LOG} {}", trend.repo),
             "Review individual candidate verdicts",
         ),
         _ => (

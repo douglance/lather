@@ -155,7 +155,15 @@ impl Repo {
     }
 
     pub fn policy(&self) -> Result<Policy> {
-        let policy: Policy = match std::fs::read_to_string(self.root.join("hygiene.toml")) {
+        let read = |filename| std::fs::read_to_string(self.root.join(filename));
+        let contents = read("lather.toml").or_else(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                read("hygiene.toml")
+            } else {
+                Err(error)
+            }
+        });
+        let policy: Policy = match contents {
             Ok(text) => toml::from_str(&text).code("CONFIG_INVALID")?,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Policy::default(),
             Err(error) => return Err(Error::new("CONFIG_INVALID", error.to_string())),

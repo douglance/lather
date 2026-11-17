@@ -5,14 +5,23 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use std::path::Path;
 use std::time::Duration;
 
-pub const DATABASE_FILE: &str = "hygiene.sqlite3";
+pub const DATABASE_FILE: &str = "wash-log.sqlite3";
+pub const LEGACY_DATABASE_FILE: &str = "hygiene.sqlite3";
 
 pub struct Store(Connection);
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
         std::fs::create_dir_all(path).code("STORE_IO")?;
-        let connection = Connection::open(path.join(DATABASE_FILE)).code("STORE_IO")?;
+        let database = path.join(DATABASE_FILE);
+        let legacy = path.join(LEGACY_DATABASE_FILE);
+        let database =
+            if !database.try_exists().code("STORE_IO")? && legacy.try_exists().code("STORE_IO")? {
+                legacy
+            } else {
+                database
+            };
+        let connection = Connection::open(database).code("STORE_IO")?;
         connection
             .busy_timeout(Duration::from_secs(5))
             .code("STORE_IO")?;
@@ -46,7 +55,7 @@ impl Store {
         if !snapshot.complete() || (snapshot.green() && !snapshot.metric_issues.is_empty()) {
             return Err(Error::new(
                 "EVIDENCE_INCOMPLETE",
-                "Run scan to see the checks that could not complete",
+                "Run spot-check to see the checks that could not complete",
             ));
         }
         let tx = self
