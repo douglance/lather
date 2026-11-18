@@ -55,6 +55,7 @@ impl Settings {
                 !evidence::SUPPORTED.contains(&key.as_str())
                     || args.is_empty()
                     || args[0].is_empty()
+                    || (key == "S14" && args.get(1).is_none_or(|arg| arg != "lather:landmines"))
             })
         {
             return Err(Error::new(
@@ -166,7 +167,7 @@ fn coverage_counts(report: &Report, key: &str) -> Option<(u128, u128)> {
 }
 
 fn is_scored(id: &str) -> bool {
-    !matches!(id, "S8" | "S9" | "S21")
+    !matches!(id, "S8" | "S9" | "S14.external" | "S21")
 }
 
 pub fn observe(repo: &Repo, policy: &Policy, gate_ms: u64) -> Result<Report> {
@@ -179,7 +180,9 @@ pub fn observe(repo: &Repo, policy: &Policy, gate_ms: u64) -> Result<Report> {
     let production = repo.sources()?.collect::<Result<BTreeMap<_, _>>>()?;
     let facts = match repo.profile {
         Profile::Rust => rust::collect(repo, &production, &policy.hygiene, &mut report),
-        Profile::TypeScript => source::typescript(repo, &production, &policy.hygiene.ui),
+        Profile::TypeScript => {
+            source::typescript(repo, &production, &tracked, &policy.hygiene, &mut report)
+        }
     }?;
     if repo.profile == Profile::TypeScript {
         report.signal("S25");

@@ -30,6 +30,37 @@ pub(super) fn decode(id: &str, format: Option<&str>, output: &str) -> Result<Evi
     }
 }
 
+pub(super) fn landmines(output: &str, failed: bool) -> Result<Evidence> {
+    let value: Value = serde_json::from_str(output).map_err(|_| invalid("Oxlint JSON"))?;
+    let diagnostics = list(&value, "diagnostics")?;
+    if count(&value, "number_of_files")? == 0 || (failed && diagnostics.is_empty()) {
+        return Err(invalid("a completed Oxlint analysis of at least one file"));
+    }
+    let mut evidence = Evidence::default();
+    for diagnostic in diagnostics {
+        let code = string(diagnostic, "code")
+            .map_err(|_| invalid("Oxlint diagnostics without parse or configuration errors"))?;
+        let Some(rule) = code
+            .strip_prefix("landmines-testing(")
+            .and_then(|name| name.strip_suffix(')'))
+        else {
+            continue;
+        };
+        let span = &diagnostic["labels"][0]["span"];
+        let line = usize::try_from(count(span, "line")?).map_err(|_| invalid("line"))?;
+        let message = string(diagnostic, "message")?;
+        evidence.test_integrity.push((
+            rule.into(),
+            Site {
+                path: string(diagnostic, "filename")?.into(),
+                line,
+                detail: format!("{rule}: {message}"),
+            },
+        ));
+    }
+    Ok(evidence)
+}
+
 fn invalid(field: &str) -> Error {
     Error::new(
         "EVIDENCE_OUTPUT",
@@ -152,6 +183,23 @@ fn eslint(value: &Value, rule_match: &str) -> Result<Evidence> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn landmines_requires_complete_oxlint_output() {
+        let unrelated = r#"{"diagnostics":[{"code":"eslint(no-debugger)","severity":"error"}],"number_of_files":1}"#;
+        assert!(
+            landmines(unrelated, true)
+                .unwrap()
+                .test_integrity
+                .is_empty()
+        );
+        let empty = r#"{"diagnostics":[],"number_of_files":1}"#;
+        assert!(landmines(empty, false).is_ok());
+        assert!(landmines(empty, true).is_err());
+        assert!(landmines(r#"{"diagnostics":[],"number_of_files":0}"#, false).is_err());
+        let syntax_error = r#"{"diagnostics":[{"code":null,"severity":"error","message":"Unexpected token"}],"number_of_files":1}"#;
+        assert!(landmines(syntax_error, true).is_err());
+    }
 
     #[test]
     fn decodes_only_measured_diagnostics_and_coverage() {

@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::Duration;
 
-pub const SUPPORTED: &[&str] = &["S12", "S13", "S15", "S24", "S25"];
+pub const SUPPORTED: &[&str] = &["S12", "S13", "S14", "S15", "S24", "S25"];
 
 pub fn measure(
     repo: &Repo,
@@ -63,7 +63,7 @@ pub fn measure(
             .ok_or_else(|| Error::new("EVIDENCE_TOOL", "Evidence executable path is not UTF-8"))?;
         let output = process::run(&repo.root, absolute, &argv, Duration::from_secs(300))?;
         if !output.status.success()
-            && !(matches!(format, Some("eslint" | "knip" | "machete"))
+            && !(matches!(format, Some("eslint" | "knip" | "landmines" | "machete"))
                 && output.status.code() == Some(1))
         {
             return Err(Error::new(
@@ -71,7 +71,11 @@ pub fn measure(
                 format!("{id}: {}", output.diagnostic()),
             ));
         }
-        let measured = formats::decode(id, format, &output.stdout)?;
+        let measured = if id == "S14" {
+            formats::landmines(&output.stdout, !output.status.success())?
+        } else {
+            formats::decode(id, format, &output.stdout)?
+        };
         report
             .scope
             .insert(format!("{id}.external"), format!("{:x}", hasher.finalize()));
@@ -135,7 +139,12 @@ fn store(
         let key = format!("{id}.external");
         report.signal(&key);
         let mut seen = BTreeSet::new();
-        for site in evidence.findings {
+        let findings = evidence.findings.into_iter().map(|site| (None, site));
+        let test_integrity = evidence
+            .test_integrity
+            .into_iter()
+            .map(|(rule, site)| (Some(rule), site));
+        for (rule, site) in findings.chain(test_integrity) {
             let path = Path::new(&site.path);
             let relative = if path.is_absolute() {
                 path.strip_prefix(&repo.root).ok().and_then(Path::to_str)
@@ -154,9 +163,15 @@ fn store(
                     "A finding requires a line and a description",
                 ));
             }
-            if seen.insert((path.to_owned(), site.line, site.detail.clone())) {
-                report.record(&key, path, site.line, site.detail, 1);
+            if let Some(rule) = rule {
+                *report
+                    .guards
+                    .entry(format!("S14 {rule} {path}"))
+                    .or_default() += 1;
+            } else if !seen.insert((path.to_owned(), site.line, site.detail.clone())) {
+                continue;
             }
+            report.record(&key, path, site.line, site.detail, 1);
         }
     }
     Ok(())
@@ -187,6 +202,8 @@ fn coverage(key: &str, counts: Counts, report: &mut Report) -> Result<()> {
 struct Evidence {
     #[serde(default)]
     findings: Vec<Site>,
+    #[serde(skip)]
+    test_integrity: Vec<(String, Site)>,
     lines: Option<Counts>,
     branches: Option<Counts>,
 }
@@ -196,4 +213,48 @@ struct Evidence {
 struct Counts {
     covered: u64,
     total: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repo::Profile;
+
+    #[test]
+    fn landmines_guards_each_file_and_rule_without_scoring() {
+        let repo = Repo {
+            id: "example".into(),
+            worktree: "dev".into(),
+            root: "/worktree".into(),
+            profile: Profile::TypeScript,
+        };
+        let tracked = BTreeSet::from(["a.test.js", "b.test.js"]);
+        let report = |findings: &[(&str, &str)]| {
+            let diagnostics: Vec<_> = findings
+                .iter()
+                .map(|(path, rule)| {
+                    serde_json::json!({
+                        "code": format!("landmines-testing({rule})"),
+                        "severity": "error",
+                        "filename": path,
+                        "labels": [{"span": {"line": 4}}],
+                        "message": "Await the operation"
+                    })
+                })
+                .collect();
+            let output = serde_json::json!({"diagnostics": diagnostics, "number_of_files": 2});
+            let evidence = formats::landmines(&output.to_string(), !findings.is_empty()).unwrap();
+            let mut report = Report::default();
+            store("S14", &repo, &tracked, evidence, &mut report).unwrap();
+            report
+        };
+        let sleep = ("a.test.js", "no-fixed-sleep");
+        let before = report(&[sleep, sleep]);
+        assert_eq!(before.signals["S14.external"].debt, 2);
+        assert!(!report(&[sleep]).guards_regressed(&before));
+        assert!(report(&[sleep, sleep, sleep]).guards_regressed(&before));
+        assert!(report(&[sleep, ("b.test.js", sleep.1)]).guards_regressed(&before));
+        assert!(report(&[sleep, (sleep.0, "no-flake-masking")]).guards_regressed(&before));
+        assert_eq!(before.scored(&Settings::default()).count(), 0);
+    }
 }

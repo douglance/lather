@@ -2,8 +2,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const ts = require(path.join(process.cwd(), "node_modules/typescript"));
 const ui = JSON.parse(process.argv[1]);
-const paths = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-const known = new Set(paths);
+const { production, tests } = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const known = new Set(production);
 const config = ts.getParsedCommandLineOfConfigFile("tsconfig.json", {}, {
     ...ts.sys,
     onUnRecoverableConfigFileDiagnostic(diagnostic) {
@@ -13,7 +13,7 @@ const config = ts.getParsedCommandLineOfConfigFile("tsconfig.json", {}, {
 if (!config) throw new Error("Unable to read tsconfig.json");
 const resolution = ts.createModuleResolutionCache(process.cwd(), f => f, config.options);
 const report = Object.create(null);
-for (const relative of paths) {
+for (const relative of [...production, ...tests]) {
     const filename = path.resolve(relative);
     const text = fs.readFileSync(filename, "utf8");
     const root = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
@@ -109,6 +109,14 @@ for (const relative of paths) {
         const tokens = [];
         walkLeaves(node, leaf => tokens.push(leaf.getText(root)), false);
         return tokens;
+    }
+    if (!known.has(relative)) {
+        walkLeaves(root, () => {}, true);
+        for (const span of comments.values()) {
+            const body = text.slice(span.pos + 2, span.end).trimStart();
+            if (/^(oxlint|eslint)-disable\b/.test(body)) facts.guards.push(body);
+        }
+        continue;
     }
     syntax(root);
     walkLeaves(root, leaf => {

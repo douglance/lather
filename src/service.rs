@@ -261,7 +261,7 @@ fn candidate_decision(
     {
         (
             Decision::Rejected,
-            "New suppression or reduced check coverage".into(),
+            "Suppression, test integrity, or coverage safeguard regressed".into(),
         )
     } else if repair_mode {
         repair_decision(before, after)

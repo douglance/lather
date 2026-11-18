@@ -20,7 +20,7 @@ and up to 256 finding locations.
 | S11 Exact duplication | Score | Count additional lines in token-identical function bodies of at least 64 tokens. Inventory includes measured function lines | Same for JS/TS functions, methods and other body-bearing function syntax |
 | S12 Dead code | Score | Count compiler-reported unused items. Optionally ingest cargo-machete or project evidence | Optionally ingest Knip or project evidence for unused exports, files and dependencies |
 | S13 Maintenance markers | Score | Count comment markers and explicit deprecation attributes. The compiler lint gate sees active deprecation warnings | Count comment markers and deprecation tags. Optionally ingest typed ESLint deprecation diagnostics |
-| S14 Tests | Gate and guard | Run the test suite and guard existing tests and the ignored-test count | Run discovered tests and guard the existing test inventory and ignored-test count |
+| S14 Tests | Gate and guard | Run the test suite and guard existing tests and the ignored-test count | Run discovered tests and guard the existing test inventory and ignored-test count. Optionally guard against new Landmines testing findings |
 | S15 Coverage | Optional score and guard | Count uncovered lines and branches in an LLVM or project report. Reject a lower covered fraction | Count uncovered lines and branches in an Istanbul or project report. Reject a lower covered fraction |
 | S16 Feedback latency | Report | Record elapsed milliseconds for the gate phase | Same |
 | S17 Verification surface | Report | Inventory named hooks, common verification targets, workflow command markers and browser/simulator fixture paths | Also include matching package scripts and Storybook fixtures |
@@ -93,6 +93,7 @@ incomparable.
 [hygiene.evidence]
 S12 = ["hygiene-checks/unused", "lather:knip"]
 S13 = ["hygiene-checks/eslint", "lather:eslint"]
+S14 = ["hygiene-checks/test-integrity", "lather:landmines"]
 S15 = ["hygiene-checks/coverage", "lather:llvm"]
 S24 = ["hygiene-checks/eslint", "lather:eslint"]
 S25 = ["hygiene-checks/accessibility"]
@@ -102,6 +103,44 @@ S25 = ["hygiene-checks/accessibility"]
 - S15 accepts `lather:llvm` or `lather:istanbul`. Use full-workload reports and configure branch instrumentation where supported. Coverage counts detect missed instrumented lines and branches. Changed-file weighting is omitted because the patch changes the set of files being weighted. [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) · [Istanbul reports](https://istanbul.js.org/docs/advanced/alternative-reporters/)
 - S13, S24 and S25 accept `lather:eslint`. The project must enable the corresponding typed deprecation, floating-promise, or `jsx-a11y` rules. [ESLint JSON](https://eslint.org/docs/latest/use/formatters/#json)
 - Without a format selector, S12, S13, S24 and S25 expect `{"findings":[{"path":"src/main.rs","line":42,"detail":"Description"}]}`. S15 expects `{"lines":{"covered":20,"total":24},"branches":{"covered":5,"total":9}}`. Branches are optional when the instrumenter cannot report them.
+
+### Test integrity with Landmines
+
+For TypeScript and JavaScript, pin Oxlint and `@interfere/landmines` in your
+project lockfile. Enable the testing plugin and the rules you want checked in
+`.oxlintrc.json`:
+
+```json
+{
+  "jsPlugins": [
+    {
+      "name": "landmines-testing",
+      "specifier": "@interfere/landmines/testing"
+    }
+  ],
+  "rules": {
+    "landmines-testing/no-fixed-sleep": "error",
+    "landmines-testing/no-unsignaled-poll": "error",
+    "landmines-testing/no-flake-masking": "error"
+  }
+}
+```
+
+Commit executable `hygiene-checks/test-integrity` with a lint scope that includes
+your tests and their helpers. This example uses the project root:
+
+```sh
+#!/bin/sh
+exec ./node_modules/.bin/oxlint --format json
+```
+
+Start a fresh baseline. Existing reported findings can stay. Verify rejects
+increases for any file and rule, even when the same rule improves elsewhere.
+`S14.external` shows the findings without affecting the score. Oxlint
+configuration and ignore files are protected during verification. Keep the
+configured lint scope and installed versions fixed. In the TypeScript and
+JavaScript profile, Lather also guards against new Oxlint and ESLint disable
+comments in tracked test files. [Landmines testing rules](https://github.com/interfere-inc/landmines#landmines-testing)
 
 See [the advice mapping](advice-coverage.md) for the source advice covered by each
 signal, proxy, or manual review step.
