@@ -1,4 +1,5 @@
-mod compiler_score;
+mod scoring;
+use scoring::normalized;
 
 use crate::hygiene::{Report, Settings};
 use schemars::JsonSchema;
@@ -263,10 +264,6 @@ impl Snapshot {
                 .zip(other.rust_unsafe_policy.as_ref())
                 .is_none_or(|(left, right)| left.keys().eq(right.keys()))
     }
-}
-
-fn normalized(debt: u128, denominator: u128) -> u32 {
-    (10_000 * denominator.saturating_sub(debt) / denominator) as u32
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]

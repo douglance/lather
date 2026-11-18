@@ -1,4 +1,4 @@
-use super::{Projection, Snapshot, normalized};
+use super::{Projection, Snapshot};
 use std::collections::BTreeMap;
 
 impl Snapshot {
@@ -43,4 +43,8 @@ impl Snapshot {
 
 fn unprotected_roots(roots: &BTreeMap<String, bool>) -> usize {
     roots.values().filter(|enforced| !**enforced).count()
+}
+
+pub(super) fn normalized(debt: u128, denominator: u128) -> u32 {
+    (10_000 * denominator.saturating_sub(debt) / denominator) as u32
 }
