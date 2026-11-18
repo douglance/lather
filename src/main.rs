@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod cli;
+mod hygiene;
 mod integrity;
 mod measure;
 mod model;

@@ -1,6 +1,6 @@
 use crate::model::{Error, Gate, Result, Snapshot, Status, UnusedItem};
 use crate::{
-    process,
+    hygiene, process,
     repo::{Profile, Repo},
     rust_policy, signals, typescript,
 };
@@ -8,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const CHECK_LIMIT: Duration = Duration::from_secs(240);
 const RUST_CHECK: &[&str] = &[
@@ -46,6 +46,7 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
     let policy = repo.policy()?;
     let rust = repo.profile == Profile::Rust;
     let metrics = signals::measure(repo.sources()?, policy.file_lines, rust)?;
+    let started = Instant::now();
     let (
         environment,
         mut gates,
@@ -87,8 +88,33 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
         }
     };
     gates.push(test_gate);
+    let gate_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    let mut hygiene = hygiene::observe(repo, &policy, gate_ms)?;
+    let compiler_failed = gates
+        .iter()
+        .any(|gate| gate.id == "S1" && gate.status == Status::Fail);
+    for id in ["S8", "S9"] {
+        let observation = &hygiene.signals[id];
+        let result = if let Some(reason) = hygiene.unavailable.get("source-analysis") {
+            if compiler_failed {
+                blocked_by_compiler(id)
+            } else {
+                gate(id, Status::Unknown, 0, reason)
+            }
+        } else if observation.debt > 0 {
+            gate(
+                id,
+                Status::Fail,
+                observation.debt,
+                &observation.findings[0].detail,
+            )
+        } else {
+            gate(id, Status::Pass, 0, "No violations in the measured graph")
+        };
+        gates.push(result);
+    }
     let mut metric_issues = metrics.issues;
-    let rust_unsafe_policy = rust_policy::observe(repo, &mut metric_issues);
+    let rust_unsafe_policy = rust_policy::observe(repo, &mut hygiene, &mut metric_issues);
     if repo.identity()? != identity {
         return Err(Error::new(
             "WORKTREE_CHANGED",
@@ -114,6 +140,7 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
         strict_flags,
         rust_unsafe_policy,
         metric_issues,
+        hygiene: Some(hygiene),
         test_inventory,
         ignored_tests,
     })
@@ -121,7 +148,7 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
 
 fn environment(repo: &Repo) -> String {
     let mut hash = Sha256::new();
-    hash.update(b"rust-length-exits-unused-unsafe-policy-v6\0");
+    hash.update(b"rust-hygiene-catalog-v7\0");
     for (program, args) in [
         ("cargo", &["-V"][..]),
         ("rustc", &["-vV"][..]),

@@ -219,11 +219,27 @@ impl Service {
                 Decision::Rejected,
                 "A Rust crate root lost its unsafe-code policy".into(),
             )
+        } else if after
+            .hygiene
+            .as_ref()
+            .zip(before.hygiene.as_ref())
+            .is_some_and(|(new, old)| new.guards_regressed(old))
+        {
+            (
+                Decision::Rejected,
+                "New suppression or reduced check coverage".into(),
+            )
         } else if baseline.repair_mode {
             repair_decision(&before, &after)
         } else if !after.green() {
             (Decision::Rejected, "A hard gate failed".into())
-        } else if after.burden_increased(&before) {
+        } else if after.burden_increased(&before)
+            || after
+                .hygiene
+                .as_ref()
+                .zip(before.hygiene.as_ref())
+                .is_some_and(|(new, old)| new.regressed(old))
+        {
             (Decision::Rejected, "A scored signal regressed".into())
         } else if matches!((before_score, after_score), (Some(before), Some(after)) if after > before)
         {

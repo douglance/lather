@@ -35,3 +35,20 @@ fn cargo_lints_support_string_and_table_levels() {
         assert_eq!(forbids_in_manifest(Some(&lints)), expected);
     }
 }
+
+#[test]
+fn lint_levels_respect_root_overrides() {
+    let root = syn::parse_file("#![allow(unused_must_use)]").unwrap();
+    assert!(!super::strict_at_root(
+        &root,
+        Some("deny"),
+        "unused_must_use"
+    ));
+    assert!(super::strict_at_root(
+        &root,
+        Some("forbid"),
+        "unused_must_use"
+    ));
+    let root = syn::parse_file("#![deny(unused_must_use)]").unwrap();
+    assert!(super::strict_at_root(&root, None, "unused_must_use"));
+}
