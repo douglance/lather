@@ -27,6 +27,8 @@ pub fn policy_path(path: &str) -> bool {
         || name.starts_with("cypress.config.")
         || name.starts_with("coverage.config.")
         || name.starts_with(".eslintrc")
+        || name.starts_with(".oxlintrc.")
+        || name.starts_with("oxlint.config.")
         || name.starts_with(".prettier")
         || name.starts_with("eslint.config.")
         || name.starts_with("prettier.config.")
@@ -47,6 +49,7 @@ pub fn policy_path(path: &str) -> bool {
                 | "package.json"
                 | "package-lock.json"
                 | ".eslintignore"
+                | ".oxlintignore"
                 | ".npmrc"
                 | ".gitignore"
                 | ".gitattributes"

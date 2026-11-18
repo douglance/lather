@@ -1,4 +1,4 @@
-use super::{Report, Ui, json};
+use super::{Report, Settings, json};
 use crate::model::{Error, Result, WithCode};
 use crate::process;
 use crate::repo::Repo;
@@ -32,11 +32,30 @@ pub struct Function {
 pub fn typescript(
     repo: &Repo,
     production: &BTreeMap<String, String>,
-    ui: &Ui,
+    tracked: &BTreeSet<&str>,
+    policy: &Settings,
+    report: &mut Report,
 ) -> Result<BTreeMap<String, Facts>> {
-    let settings = serde_json::to_string(ui).code("HYGIENE_CONFIG")?;
+    let settings = serde_json::to_string(&policy.ui).code("HYGIENE_CONFIG")?;
     let temp = tempfile::NamedTempFile::new().code("HYGIENE_INPUT")?;
-    let files = production.keys().collect::<BTreeSet<_>>();
+    let tests = tracked
+        .iter()
+        .copied()
+        .filter(|path| {
+            policy.evidence.contains_key("S14")
+                && crate::integrity::test_path(path)
+                && path.rsplit_once('.').is_some_and(|(_, ext)| {
+                    matches!(
+                        ext,
+                        "js" | "jsx" | "cjs" | "mjs" | "ts" | "tsx" | "cts" | "mts"
+                    )
+                })
+        })
+        .collect::<BTreeSet<_>>();
+    let files = serde_json::json!({
+        "production": production.keys().collect::<Vec<_>>(),
+        "tests": tests,
+    });
     serde_json::to_writer(temp.as_file(), &files).code("HYGIENE_INPUT")?;
     let path = temp
         .path()
@@ -49,7 +68,18 @@ pub fn typescript(
         Duration::from_secs(120),
     )?
     .checked("TypeScript syntax analysis")?;
-    let facts: BTreeMap<String, Facts> = json(&output)?;
+    let mut facts: BTreeMap<String, Facts> = json(&output)?;
+    for path in tests {
+        let file = facts.remove(path).ok_or_else(|| {
+            Error::new(
+                "HYGIENE_OUTPUT",
+                format!("Missing test source analysis for {path}"),
+            )
+        })?;
+        for guard in file.guards {
+            *report.guards.entry(format!("{path}:{guard}")).or_default() += 1;
+        }
+    }
     if !facts.keys().eq(production.keys()) {
         return Err(Error::new(
             "HYGIENE_OUTPUT",

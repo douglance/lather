@@ -29,9 +29,17 @@ export function blank() { try { return literal; } catch {} }
 `,
             "b.ts": "export { blank as b } from './a';\n",
             "c.js": "const x = require('./b');\n// eslint-disable-next-line no-debugger\ndebugger;\n",
+            "d.test.js": `/* eslint-disable */
+const literal = "/* oxlint-disable */";
+// oxlint-disable-next-line landmines-testing/no-fixed-sleep
+debugger;
+`,
         };
         for (const [file, body] of Object.entries(files)) fs.writeFileSync(path.join(root, file), body);
-        fs.writeFileSync(path.join(root, "paths.json"), JSON.stringify(Object.keys(files)));
+        fs.writeFileSync(path.join(root, "paths.json"), JSON.stringify({
+            production: ["a.tsx", "b.ts", "c.js"],
+            tests: ["d.test.js"],
+        }));
         fs.writeFileSync(path.join(root, "tsconfig.json"), JSON.stringify({
             compilerOptions: { allowJs: true, jsx: "preserve", paths: { "@local/*": ["./*"] } },
         }));
@@ -54,6 +62,8 @@ export function blank() { try { return literal; } catch {} }
         assert.deepEqual(data["a.tsx"].commented_code, [4]);
         assert.deepEqual(data["a.tsx"].guards, ["// @ts-expect-error only for fixture", "/* istanbul ignore next */"]);
         assert.deepEqual(data["c.js"].findings.map(finding => finding.slice(0, 2)).sort(), [["S24", 3], ["S5", 2]]);
+        assert.deepEqual(data["d.test.js"].guards, ["eslint-disable */", "oxlint-disable-next-line landmines-testing/no-fixed-sleep"]);
+        assert.deepEqual(data["d.test.js"].findings, []);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
