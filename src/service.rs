@@ -186,70 +186,15 @@ impl Service {
         let protected: Vec<_> = diff.protected.into_iter().collect();
         let before_score = before.score(&anchor);
         let after_score = after.score(&anchor);
-        let (decision, reason) = if !after.comparable(&anchor)
-            || !after.complete()
-            || (!baseline.repair_mode && !after.metric_issues.is_empty())
-            || (before.rust_unsafe_policy.is_some() && after.rust_unsafe_policy.is_none())
-        {
-            (
-                Decision::Inconclusive,
-                "Policy, environment, or available check evidence changed".into(),
-            )
-        } else if !protected.is_empty() {
-            (
-                Decision::Rejected,
-                format!("Protected inputs changed: {}", protected.join(", ")),
-            )
-        } else if diff.lines > u64::from(before.policy.max_diff_lines) {
-            (
-                Decision::Rejected,
-                format!(
-                    "Diff exceeds {} changed lines",
-                    before.policy.max_diff_lines
-                ),
-            )
-        } else if test_inventory_regressed(&before, &after) {
-            (
-                Decision::Rejected,
-                "The number of ignored tests increased or a previously executed test disappeared"
-                    .into(),
-            )
-        } else if after.rust_policy_regressed(&before) {
-            (
-                Decision::Rejected,
-                "A Rust crate root lost its unsafe-code policy".into(),
-            )
-        } else if after
-            .hygiene
-            .as_ref()
-            .zip(before.hygiene.as_ref())
-            .is_some_and(|(new, old)| new.guards_regressed(old))
-        {
-            (
-                Decision::Rejected,
-                "New suppression or reduced check coverage".into(),
-            )
-        } else if baseline.repair_mode {
-            repair_decision(&before, &after)
-        } else if !after.green() {
-            (Decision::Rejected, "A hard gate failed".into())
-        } else if after.burden_increased(&before)
-            || after
-                .hygiene
-                .as_ref()
-                .zip(before.hygiene.as_ref())
-                .is_some_and(|(new, old)| new.regressed(old))
-        {
-            (Decision::Rejected, "A scored signal regressed".into())
-        } else if matches!((before_score, after_score), (Some(before), Some(after)) if after > before)
-        {
-            (
-                Decision::Accepted,
-                "Score improved and all hard gates passed".into(),
-            )
-        } else {
-            (Decision::Rejected, "Score did not improve".into())
-        };
+        let (decision, reason) = candidate_decision(
+            &anchor,
+            &before,
+            &after,
+            baseline.repair_mode,
+            &protected,
+            diff.lines,
+            (before_score, after_score),
+        );
         self.store.record(
             Verification {
                 baseline: id,
@@ -263,6 +208,80 @@ impl Service {
             },
             &after,
         )
+    }
+}
+
+fn candidate_decision(
+    anchor: &Snapshot,
+    before: &Snapshot,
+    after: &Snapshot,
+    repair_mode: bool,
+    protected: &[String],
+    diff_lines: u64,
+    scores: (Option<u32>, Option<u32>),
+) -> (Decision, String) {
+    if !after.comparable(anchor)
+        || !after.complete()
+        || (!repair_mode && !after.metric_issues.is_empty())
+        || (before.rust_unsafe_policy.is_some() && after.rust_unsafe_policy.is_none())
+    {
+        (
+            Decision::Inconclusive,
+            "Policy, environment, or available check evidence changed".into(),
+        )
+    } else if !protected.is_empty() {
+        (
+            Decision::Rejected,
+            format!("Protected inputs changed: {}", protected.join(", ")),
+        )
+    } else if diff_lines > u64::from(before.policy.max_diff_lines) {
+        (
+            Decision::Rejected,
+            format!(
+                "Diff exceeds {} changed lines",
+                before.policy.max_diff_lines
+            ),
+        )
+    } else if test_inventory_regressed(before, after) {
+        (
+            Decision::Rejected,
+            "The number of ignored tests increased or a previously executed test disappeared"
+                .into(),
+        )
+    } else if after.rust_policy_regressed(before) {
+        (
+            Decision::Rejected,
+            "A Rust crate root lost its unsafe-code policy".into(),
+        )
+    } else if after
+        .hygiene
+        .as_ref()
+        .zip(before.hygiene.as_ref())
+        .is_some_and(|(new, old)| new.guards_regressed(old))
+    {
+        (
+            Decision::Rejected,
+            "New suppression or reduced check coverage".into(),
+        )
+    } else if repair_mode {
+        repair_decision(before, after)
+    } else if !after.green() {
+        (Decision::Rejected, "A hard gate failed".into())
+    } else if after.burden_increased(before)
+        || after
+            .hygiene
+            .as_ref()
+            .zip(before.hygiene.as_ref())
+            .is_some_and(|(new, old)| new.regressed(old))
+    {
+        (Decision::Rejected, "A scored signal regressed".into())
+    } else if matches!(scores, (Some(before), Some(after)) if after > before) {
+        (
+            Decision::Accepted,
+            "Score improved and all hard gates passed".into(),
+        )
+    } else {
+        (Decision::Rejected, "Score did not improve".into())
     }
 }
 
