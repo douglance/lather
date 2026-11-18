@@ -1,10 +1,10 @@
 use super::{
     RUST_CHECK, RUST_LINT, blocked_by_compiler, diagnostic_gate, environment, formatting_gate,
-    test_gate,
+    gate, test_gate,
 };
 use crate::model::{Gate, Status, UnusedItem};
 use crate::repo::{Profile, Repo};
-use crate::typescript;
+use crate::{hygiene, typescript};
 
 pub(super) struct Checks {
     pub(super) environment: String,
@@ -55,5 +55,31 @@ pub(super) fn run(repo: &Repo) -> Checks {
         unused_items,
         strict_flags,
         tests,
+    }
+}
+
+pub(super) fn add_graph_gates(gates: &mut Vec<Gate>, report: &hygiene::Report) {
+    let compiler_failed = gates
+        .iter()
+        .any(|gate| gate.id == "S1" && gate.status == Status::Fail);
+    for id in ["S8", "S9"] {
+        let observation = &report.signals[id];
+        let result = if let Some(reason) = report.unavailable.get("source-analysis") {
+            if compiler_failed {
+                blocked_by_compiler(id)
+            } else {
+                gate(id, Status::Unknown, 0, reason)
+            }
+        } else if observation.debt > 0 {
+            gate(
+                id,
+                Status::Fail,
+                observation.debt,
+                &observation.findings[0].detail,
+            )
+        } else {
+            gate(id, Status::Pass, 0, "No violations in the measured graph")
+        };
+        gates.push(result);
     }
 }

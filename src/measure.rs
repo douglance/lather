@@ -59,29 +59,7 @@ pub fn scan(repo: &Repo, expected_commit: Option<&str>) -> Result<Snapshot> {
     gates.push(test_gate);
     let gate_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
     let mut hygiene = hygiene::observe(repo, &policy, gate_ms)?;
-    let compiler_failed = gates
-        .iter()
-        .any(|gate| gate.id == "S1" && gate.status == Status::Fail);
-    for id in ["S8", "S9"] {
-        let observation = &hygiene.signals[id];
-        let result = if let Some(reason) = hygiene.unavailable.get("source-analysis") {
-            if compiler_failed {
-                blocked_by_compiler(id)
-            } else {
-                gate(id, Status::Unknown, 0, reason)
-            }
-        } else if observation.debt > 0 {
-            gate(
-                id,
-                Status::Fail,
-                observation.debt,
-                &observation.findings[0].detail,
-            )
-        } else {
-            gate(id, Status::Pass, 0, "No violations in the measured graph")
-        };
-        gates.push(result);
-    }
+    profile::add_graph_gates(&mut gates, &hygiene);
     let mut metric_issues = metrics.issues;
     let rust_unsafe_policy = rust_policy::observe(repo, &mut hygiene, &mut metric_issues);
     if repo.identity()? != identity {
