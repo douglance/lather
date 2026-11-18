@@ -1,8 +1,10 @@
+mod cargo_graph;
+
 use super::test_only;
 use crate::hygiene::{Report, architecture, source::Facts};
 use crate::model::Result;
 use crate::repo::Repo;
-use crate::rust_policy::{self, Metadata, Package};
+use crate::rust_policy;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use syn::visit::{self, Visit};
@@ -17,7 +19,7 @@ pub fn measure(
     report: &mut Report,
 ) -> Result<()> {
     let metadata = rust_policy::metadata(repo)?;
-    let crates = crate_edges(repo, &metadata, facts);
+    let crates = cargo_graph::crate_edges(repo, &metadata, facts);
     report
         .scope
         .insert("rust-graph".into(), "workspace-dependencies-v1".into());
@@ -87,70 +89,6 @@ pub fn measure(
 
 fn relative<'a>(repo: &Repo, path: &'a Path) -> Option<&'a str> {
     path.strip_prefix(&repo.root).ok()?.to_str()
-}
-
-fn source_root<'a>(repo: &Repo, package: &'a Package) -> Option<&'a str> {
-    let target = package
-        .targets
-        .iter()
-        .find(|target| {
-            target.kind.iter().any(|kind| {
-                matches!(
-                    kind.as_str(),
-                    "lib" | "rlib" | "dylib" | "cdylib" | "staticlib" | "proc-macro"
-                )
-            })
-        })
-        .or_else(|| {
-            package
-                .targets
-                .iter()
-                .find(|target| target.kind.iter().any(|kind| kind == "bin"))
-        })?;
-    relative(repo, &target.src_path)
-}
-
-fn crate_edges<'a>(
-    repo: &Repo,
-    metadata: &'a Metadata,
-    facts: &mut BTreeMap<String, Facts>,
-) -> BTreeMap<&'a str, Vec<&'a str>> {
-    let packages: BTreeMap<_, _> = metadata
-        .packages
-        .iter()
-        .filter(|package| metadata.workspace_members.contains(&package.id))
-        .filter_map(|package| Some((package.manifest_path.parent()?, source_root(repo, package)?)))
-        .collect();
-    let mut graph = BTreeMap::new();
-    for package in &metadata.packages {
-        let Some(source) = source_root(repo, package) else {
-            continue;
-        };
-        if !metadata.workspace_members.contains(&package.id) {
-            continue;
-        }
-        let mut dependencies: Vec<_> = package
-            .dependencies
-            .iter()
-            .filter(|dependency| dependency.kind.as_deref() != Some("dev"))
-            .filter_map(|dependency| packages.get(dependency.path.as_deref()?).copied())
-            .filter(|&target| target != source)
-            .collect();
-        dependencies.sort_unstable();
-        dependencies.dedup();
-        if let Some(file) = facts.get_mut(source) {
-            file.edges
-                .extend(dependencies.iter().map(|&target| (target.into(), 1)));
-            file.module_edges.extend(
-                package
-                    .dependencies
-                    .iter()
-                    .map(|dependency| (format!("package:{}", dependency.name), 1)),
-            );
-        }
-        graph.insert(source, dependencies);
-    }
-    graph
 }
 
 type Reference<'a> = (&'a str, Vec<String>, Vec<String>, usize);
