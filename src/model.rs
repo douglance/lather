@@ -1,3 +1,5 @@
+mod compiler_score;
+
 use crate::hygiene::{Report, Settings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -198,33 +200,9 @@ impl Snapshot {
             }
             _ => return None,
         }
-        match (&self.strict_flags, &anchor.strict_flags) {
-            (None, None) => {}
-            (Some(flags), Some(initial)) => {
-                let total = crate::strictness::FLAGS.len();
-                let debt =
-                    total.saturating_sub(flags.len().saturating_add(projection.more_strict_flags));
-                let denominator = total.saturating_sub(initial.len()).max(1);
-                let part = weights.weight("S2", 20);
-                weight += part;
-                score += part * normalized(debt as u128, denominator as u128);
-            }
-            _ => return None,
-        }
-        match (&self.rust_unsafe_policy, &anchor.rust_unsafe_policy) {
-            (Some(roots), Some(initial)) => {
-                if !roots.is_empty() {
-                    let debt = unprotected_roots(roots)
-                        .saturating_sub(projection.fewer_unprotected_rust_roots);
-                    let denominator = unprotected_roots(initial).max(1);
-                    let part = weights.weight("S2", 20);
-                    weight += part;
-                    score += part * normalized(debt as u128, denominator as u128);
-                }
-            }
-            (None, None) => {}
-            _ => return None,
-        }
+        let (compiler_score, compiler_weight) = self.compiler_policy_score(anchor, &projection)?;
+        score += compiler_score;
+        weight += compiler_weight;
         if let (Some(current), Some(initial)) = (&self.hygiene, &anchor.hygiene) {
             for (key, part, observation) in current.scored(weights) {
                 let reference = initial.signals.get(key)?;
@@ -285,10 +263,6 @@ impl Snapshot {
                 .zip(other.rust_unsafe_policy.as_ref())
                 .is_none_or(|(left, right)| left.keys().eq(right.keys()))
     }
-}
-
-fn unprotected_roots(roots: &BTreeMap<String, bool>) -> usize {
-    roots.values().filter(|enforced| !**enforced).count()
 }
 
 fn normalized(debt: u128, denominator: u128) -> u32 {
