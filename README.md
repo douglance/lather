@@ -15,8 +15,8 @@ lather --help
 
 Use Rust 1.88 or later to install Lather. Run it on Linux with Git. Register only trusted worktrees because checks can execute repository code, including build scripts and tests. Start from a clean, committed worktree.
 
-- **Rust.** Install Cargo, Clippy, and rustfmt. Commit `Cargo.lock` and cache dependencies for offline use. Lather scores oversized files, compiler-reported unused items, and unchecked exits such as `unwrap` and `panic!`.
-- **TypeScript or JavaScript.** Use Node 24, a committed `package-lock.json`, and a root `tsconfig.json`. Install TypeScript, ESLint, and Prettier via `npm ci`. JavaScript-only projects need effective `checkJs`. Lather scores oversized files and TypeScript strictness.
+- **Rust.** Install Cargo, Clippy, and rustfmt. Commit `Cargo.lock` and cache dependencies for offline use. Lather checks compiler and lint diagnostics, dependency boundaries, and workspace targets. It scores production debt such as unchecked exits and oversized functions.
+- **TypeScript or JavaScript.** Use Node 24, a committed `package-lock.json`, and a root `tsconfig.json`. Install TypeScript, ESLint, and Prettier via `npm ci`. JavaScript-only projects need effective `checkJs`. Lather measures effective strictness, dependency cycles, escape hatches and JSX rules.
 
 Keep Rust and TypeScript/JavaScript in separate worktree roots. The Node test gate runs tracked `*.test.*`, `*.spec.*`, and `test-*` files with supported JavaScript or TypeScript extensions.
 
@@ -35,7 +35,7 @@ root = "/absolute/path/to/example"
 
 ## Verify a change
 
-**Spot-check** the worktree. This example shows the four gates and an unchecked Rust exit in a sample project:
+**Spot-check** the worktree. This example finds an unchecked Rust exit in a sample project:
 
 ```sh
 lather spot-check example --worktree dev --json
@@ -45,7 +45,6 @@ Summary of the sample JSON response:
 
 ```json
 {
-  "gates": ["pass", "pass", "pass", "pass"],
   "unchecked_exits": [{"path": "src/lib.rs", "line": 2, "construct": "unwrap"}]
 }
 ```
@@ -64,9 +63,7 @@ lather verify example --worktree dev --baseline "$BASELINE_ID" \
   --against "$TIP" --commit "$(git rev-parse HEAD)"
 ```
 
-Lather 0.2.0 accepted the sample commit. All four gates passed, and the score rose from 80% to 100%.
-
-A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all four gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, create a new baseline to begin scoring.
+A scoring baseline fixes the scoring denominator. Lather accepts a commit when the score improves, all gates pass, and tests and scored signals hold up. A failing baseline starts a repair cycle. Once all gates pass, create a new baseline to begin scoring.
 
 ### Rust unsafe-code policy
 
@@ -86,7 +83,7 @@ Conditional and module-level attributes leave the crate root uncredited. The mea
 | `history` | Read the verification history for a repository. |
 | `report` | Compare baseline trends across registered worktrees. |
 
-`verify` returns `0` for accepted, `1` for a command error, `2` for rejected, `3` for inconclusive, and `4` for repair progress. Checks detect removed tests, new Rust suppressions, and weaker TypeScript compiler settings.
+`verify` returns `0` for accepted, `1` for a command error, `2` for rejected, `3` for inconclusive, and `4` for repair progress. Checks detect removed tests, new suppressions, weaker compiler settings, and regression in any scored rule. See the [hygiene catalog and configuration](https://github.com/douglance/lather/blob/develop/docs/hygiene-rules.md).
 
 ## Configuration
 

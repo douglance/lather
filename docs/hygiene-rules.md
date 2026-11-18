@@ -1,0 +1,107 @@
+# Hygiene rules
+
+Run `lather spot-check <repo> --worktree <id> --json` to inspect the measured
+signals. The snapshot includes gate diagnostics, scored debt, source locations,
+report-only inventory, and unavailable checks. Each signal keeps the total debt
+and up to 256 finding locations.
+
+| Signal | Role | Rust | TypeScript and JavaScript |
+| --- | --- | --- | --- |
+| S1 Compiler | Gate | Cargo workspace and all-target compiler errors | Effective root TypeScript project, including JavaScript with `checkJs` |
+| S2 Strictness | Score and guard | Track unconditional `forbid(unsafe_code)` and crate-root or Cargo deny/forbid coverage for `unused_must_use` and `unreachable_code` | Count effective supported strict compiler options and guard their scope and settings |
+| S3 Type escape hatches | Score | Count unsafe expressions, functions, trait declarations and implementations. Unchecked exits and lint exceptions are measured under S24 and S5 | Count explicit `any`, non-null assertions, double assertions through `unknown`, and TypeScript check overrides |
+| S4 Lint | Gate | Count Clippy errors and warnings. Compiler-reported dead code contributes to S12 | Run project ESLint and count its diagnostics |
+| S5 Suppressions | Score and guard | Count explicit `allow` and `expect` attributes, including those in `cfg_attr`. Guard existing tests and reject new suppressions and coverage exclusions | Count ESLint, Biome, Oxlint and Prettier suppression comments. Guard these, TypeScript directives and recognized coverage exclusions |
+| S6 Custom checks | Report | Inventory tracked check paths and configured evidence commands | Same |
+| S7 Prose rules | Report | Count imperative bullets in root instruction files, divided by that count plus local check files | Same |
+| S8 Dependency boundaries | Gate | Compare detected module references and Cargo workspace dependency declarations to configured source and destination prefixes. Use `package:<name>` for a declared dependency name | Compare resolved import, export and literal load paths to configured prefixes. Use `package:<specifier>` for external or unresolved module specifiers |
+| S9 Cycles | Gate and report | Count multi-node cycles among normal and build dependencies. Report source-module cycles and optionally gate them | Count multi-node cycles in the graph of tracked production modules, including type-only edges |
+| S10 Design system | Optional score | UI frameworks supply their own semantics. A package boundary can ban a disallowed dependency | Count configured JSX elements, imports and props on bindings directly imported from the design system |
+| S11 Exact duplication | Score | Count additional lines in token-identical function bodies of at least 64 tokens. Inventory includes measured function lines | Same for JS/TS functions, methods and other body-bearing function syntax |
+| S12 Dead code | Score | Count compiler-reported unused items. Optionally ingest cargo-machete or project evidence | Optionally ingest Knip or project evidence for unused exports, files and dependencies |
+| S13 Maintenance markers | Score | Count comment markers and explicit deprecation attributes. The compiler lint gate sees active deprecation warnings | Count comment markers and deprecation tags. Optionally ingest typed ESLint deprecation diagnostics |
+| S14 Tests | Gate and guard | Run the test suite and guard existing tests and the ignored-test count | Run discovered tests and guard the existing test inventory and ignored-test count |
+| S15 Coverage | Optional score and guard | Count uncovered lines and branches in an LLVM or project report. Reject a lower covered fraction | Count uncovered lines and branches in an Istanbul or project report. Reject a lower covered fraction |
+| S16 Feedback latency | Report | Record elapsed milliseconds for the gate phase | Same |
+| S17 Verification surface | Report | Inventory named hooks, common verification targets, workflow command markers and browser/simulator fixture paths | Also include matching package scripts and Storybook fixtures |
+| S18 Module depth | Report | Inventory source code lines and public visibility declarations per file | Inventory source code lines and top-level exports per file |
+| S19 Size | Score | Count lines above the configured file or function limit | Same |
+| S20 Comments | Report | Inventory code and comment lines and commented-out local declaration candidates | Same for parseable `let`, `const`, and `var` declarations |
+| S21 Conventions | Report | Inventory parallel HTTP, date/time, and async-runtime dependencies plus formatter configs | Inventory parallel HTTP, date/time, state, and test dependencies plus formatter configs |
+| S22 Instructions | Report | Inspect root agent instruction size, recognized commands, local link targets and the `CLAUDE.md` pointer | Same |
+| S23 Formatting | Gate | Run rustfmt and record drift | Run Prettier and record drift |
+| S24 Unchecked failures | Score | Count unchecked production exits, unfinished macros and known placeholder comments | Count empty catch blocks, debugger statements and placeholder comments. Optionally ingest typed ESLint floating-promise diagnostics |
+| S25 Accessibility | Score | Use project evidence for a supported UI target | Check for missing `alt` on intrinsic `img` and `area` without a spread. Optionally ingest accessibility lints or project evidence |
+
+A signal identified by a dotted suffix is a separate measured part of its parent
+rule. A configured weight applies to each scored part. Report-only proxies stay
+outside the score. A smaller instruction file, greater module depth, or more
+custom checks can change without improving the code. Source analysis covers tracked
+production files. Rust macro expansion, conditional module selection and indirect
+aliases, and JavaScript computed imports and component aliases can require a
+project-specific checker. S11 measures exact function bodies, not near-clones.
+S20 reports syntax-shaped comments, and cannot distinguish useful explanations
+from stale prose. S22 checks that local link paths exist and that familiar commands
+are present. The hard gates run the profile commands independently.
+
+## Configure a repository
+
+These optional settings are part of the frozen baseline policy. Start a new
+baseline to change the settings or add evidence.
+
+```toml
+[hygiene]
+function_lines = 80
+rust_module_cycles = false
+
+[hygiene.weights]
+S19 = 5
+
+[[hygiene.boundaries]]
+from = "src/domain"
+forbid = "src/ui"
+
+[[hygiene.boundaries]]
+from = "src/domain"
+forbid = "package:react"
+
+[hygiene.ui]
+forbidden_elements = ["button"]
+forbidden_imports = ["react-native"]
+component_module = "@example/ui"
+forbidden_props = ["className", "style"]
+```
+
+Path prefixes match whole path segments. Specify both an existing primitive and
+its intended design-system replacement in the project's guidance. Catalog policy
+changes and manifest edits belong in a new baseline epoch. Lather's verification
+loop keeps existing tests, policy inputs and score denominators fixed. Update the
+Lather binary and start a fresh epoch before comparing snapshots made with this
+catalog.
+
+### Evidence commands
+
+Add a trusted command in `[hygiene.evidence]` for the signals your project measures.
+Lather runs the command from the worktree. Use an absolute executable outside the
+worktree or a tracked executable under `hygiene-checks/`. Keep project-owned check
+scripts there and keep the toolchain and coverage workload fixed. A configured
+tool failure, malformed output, or out-of-scope finding stops measurement. Tool
+changes detected in the executable or direct file arguments make snapshots
+incomparable.
+
+```toml
+[hygiene.evidence]
+S12 = ["hygiene-checks/unused", "lather:knip"]
+S13 = ["hygiene-checks/eslint", "lather:eslint"]
+S15 = ["hygiene-checks/coverage", "lather:llvm"]
+S24 = ["hygiene-checks/eslint", "lather:eslint"]
+S25 = ["hygiene-checks/accessibility"]
+```
+
+- S12 accepts `lather:knip` or `lather:machete`. [Knip JSON reporter](https://knip.dev/features/reporters) · [cargo-machete JSON](https://github.com/bnjbvr/cargo-machete#json-output)
+- S15 accepts `lather:llvm` or `lather:istanbul`. Use full-workload reports and configure branch instrumentation where supported. Coverage counts detect missed instrumented lines and branches. Changed-file weighting is omitted because the patch changes the set of files being weighted. [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) · [Istanbul reports](https://istanbul.js.org/docs/advanced/alternative-reporters/)
+- S13, S24 and S25 accept `lather:eslint`. The project must enable the corresponding typed deprecation, floating-promise, or `jsx-a11y` rules. [ESLint JSON](https://eslint.org/docs/latest/use/formatters/#json)
+- Without a format selector, S12, S13, S24 and S25 expect `{"findings":[{"path":"src/main.rs","line":42,"detail":"Description"}]}`. S15 expects `{"lines":{"covered":20,"total":24},"branches":{"covered":5,"total":9}}`. Branches are optional when the instrumenter cannot report them.
+
+See [the advice mapping](advice-coverage.md) for the source advice covered by each
+signal, proxy, or manual review step.

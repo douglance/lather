@@ -32,6 +32,7 @@ fn snapshot(excess_lines: u64, lint_debt: u64, formatting_debt: u64) -> Snapshot
         strict_flags: None,
         rust_unsafe_policy: None,
         metric_issues: Vec::new(),
+        hygiene: None,
         test_inventory: vec!["example".into()],
         ignored_tests: 0,
     }
@@ -128,4 +129,49 @@ fn stale_verification_cannot_overwrite_an_advanced_tip() {
     let current = db.baseline(baseline.id).unwrap();
     assert_eq!(current.anchor, baseline.anchor);
     assert_eq!(current.tip, winner.after);
+}
+
+#[test]
+fn individual_rules_and_frozen_evidence_cannot_be_traded() {
+    use crate::hygiene::Report;
+    use serde_json::json;
+
+    let mut before = Report::default();
+    before.record("S3", "src/main.rs", 4, "Unsafe block", 1);
+    before.signal("S5");
+    before
+        .scope
+        .insert("S15.external".into(), "coverage-command-v1".into());
+    before
+        .inventory
+        .insert("S15.lines".into(), json!({"covered": 90, "total": 100}));
+    before
+        .protections
+        .insert("src/main.rs:unused_must_use".into());
+
+    let mut after = before.clone();
+    after.signals.get_mut("S3").unwrap().debt = 0;
+    after.record("S5", "src/main.rs", 4, "Allow warning", 1);
+    assert!(after.comparable(&before));
+    assert!(after.regressed(&before));
+    assert!(!after.guards_regressed(&before));
+
+    after
+        .inventory
+        .insert("S15.lines".into(), json!({"covered": 48, "total": 55}));
+    assert!(
+        after.guards_regressed(&before),
+        "Less missed code can still mean worse coverage"
+    );
+    after
+        .inventory
+        .insert("S15.lines".into(), json!({"covered": 49, "total": 53}));
+    assert!(!after.guards_regressed(&before));
+    after.protections.clear();
+    assert!(after.guards_regressed(&before));
+
+    after
+        .scope
+        .insert("S15.external".into(), "coverage-command-v2".into());
+    assert!(!after.comparable(&before));
 }

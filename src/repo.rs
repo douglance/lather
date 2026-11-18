@@ -174,6 +174,7 @@ impl Repo {
                 "Use schema_version = 1, file_lines >= 20, and max_diff_lines > 0",
             ));
         }
+        policy.hygiene.validate()?;
         Ok(policy)
     }
 

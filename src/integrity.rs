@@ -18,6 +18,14 @@ pub fn policy_path(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     path.starts_with(".github/")
         || path.split('/').any(|part| part == ".cargo")
+        || path.starts_with("hygiene-checks/")
+        || path.starts_with(".husky/")
+        || name.starts_with("knip.")
+        || name.starts_with("vitest.config.")
+        || name.starts_with("jest.config.")
+        || name.starts_with("playwright.config.")
+        || name.starts_with("cypress.config.")
+        || name.starts_with("coverage.config.")
         || name.starts_with(".eslintrc")
         || name.starts_with(".prettier")
         || name.starts_with("eslint.config.")
@@ -42,6 +50,17 @@ pub fn policy_path(path: &str) -> bool {
                 | ".npmrc"
                 | ".gitignore"
                 | ".gitattributes"
+                | ".ignore"
+                | ".c8rc"
+                | ".c8rc.json"
+                | ".nycrc"
+                | ".nycrc.json"
+                | "tarpaulin.toml"
+                | "biome.json"
+                | "biome.jsonc"
+                | "deny.toml"
+                | "lefthook.yml"
+                | ".pre-commit-config.yaml"
         )
 }
 
@@ -104,17 +123,21 @@ pub fn protected_rust(source: &str) -> Result<RustGuard> {
     Ok(guard.0)
 }
 
-fn suppression(meta: &syn::Meta) -> bool {
+pub(crate) fn suppression(meta: &syn::Meta) -> bool {
     if meta.path().is_ident("allow") || meta.path().is_ident("expect") {
         return true;
     }
-    if let syn::Meta::List(list) = meta
-        && list.path.is_ident("cfg_attr")
-    {
+    if let syn::Meta::List(list) = meta {
+        if list.path.is_ident("coverage") {
+            return list
+                .parse_args::<syn::Ident>()
+                .is_ok_and(|mode| mode == "off");
+        }
         use syn::punctuated::Punctuated;
-        return list
-            .parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
-            .is_ok_and(|items| items.iter().skip(1).any(suppression));
+        return list.path.is_ident("cfg_attr")
+            && list
+                .parse_args_with(Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated)
+                .is_ok_and(|items| items.iter().skip(1).any(suppression));
     }
     false
 }

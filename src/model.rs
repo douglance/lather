@@ -1,3 +1,4 @@
+use crate::hygiene::{Report, Settings};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -36,6 +37,7 @@ pub struct Policy {
     pub schema_version: u32,
     pub file_lines: u32,
     pub max_diff_lines: u32,
+    pub hygiene: Settings,
 }
 
 impl Default for Policy {
@@ -44,6 +46,7 @@ impl Default for Policy {
             schema_version: 1,
             file_lines: 500,
             max_diff_lines: 100,
+            hygiene: Settings::default(),
         }
     }
 }
@@ -108,6 +111,8 @@ pub struct Snapshot {
     pub rust_unsafe_policy: Option<BTreeMap<String, bool>>,
     #[serde(default)]
     pub metric_issues: Vec<String>,
+    #[serde(default)]
+    pub hygiene: Option<Report>,
     pub test_inventory: Vec<String>,
     pub ignored_tests: u64,
 }
@@ -119,15 +124,30 @@ pub struct Projection {
     pub fewer_unused: usize,
     pub more_strict_flags: usize,
     pub fewer_unprotected_rust_roots: usize,
+    pub hygiene: Option<(String, u64)>,
 }
 
 impl Snapshot {
     pub fn green(&self) -> bool {
-        self.gates.len() == 4 && self.gates.iter().all(|gate| gate.status == Status::Pass)
+        self.valid_gates() && self.gates.iter().all(|gate| gate.status == Status::Pass)
     }
 
     pub fn complete(&self) -> bool {
-        self.gates.len() == 4 && self.gates.iter().all(|gate| gate.status != Status::Unknown)
+        self.valid_gates() && self.gates.iter().all(|gate| gate.status != Status::Unknown)
+    }
+
+    fn valid_gates(&self) -> bool {
+        let required = ["S1", "S4", "S14", "S23"];
+        let graph: &[_] = if self.hygiene.is_some() {
+            &["S8", "S9"]
+        } else {
+            &[]
+        };
+        self.gates.len() == required.len() + graph.len()
+            && required
+                .iter()
+                .chain(graph)
+                .all(|&id| self.gates.iter().any(|gate| gate.id == id))
     }
 
     pub fn score(&self, anchor: &Self) -> Option<u32> {
@@ -147,8 +167,9 @@ impl Snapshot {
                 .into(),
             anchor.excess_lines.max(1).into(),
         );
-        let mut weight = 5;
-        let mut score = 5 * lines;
+        let weights = &anchor.policy.hygiene;
+        let mut weight = weights.weight("S19", 5);
+        let mut score = weight * lines;
         match (&self.unchecked_exits, &anchor.unchecked_exits) {
             (None, None) => {}
             (Some(exits), Some(initial)) => {
@@ -158,8 +179,9 @@ impl Snapshot {
                     exits.len().saturating_sub(projection.fewer_exits) as u128 * 1_000,
                     denominator,
                 );
-                weight += 5;
-                score += 5 * exits;
+                let part = weights.weight("S24", 5);
+                weight += part;
+                score += part * exits;
             }
             _ => return None,
         }
@@ -170,8 +192,9 @@ impl Snapshot {
                     unused.len().saturating_sub(projection.fewer_unused) as u128,
                     initial.len().max(1) as u128,
                 );
-                weight += 15;
-                score += 15 * unused;
+                let part = weights.weight("S12", 15);
+                weight += part;
+                score += part * unused;
             }
             _ => return None,
         }
@@ -182,8 +205,9 @@ impl Snapshot {
                 let debt =
                     total.saturating_sub(flags.len().saturating_add(projection.more_strict_flags));
                 let denominator = total.saturating_sub(initial.len()).max(1);
-                weight += 20;
-                score += 20 * normalized(debt as u128, denominator as u128);
+                let part = weights.weight("S2", 20);
+                weight += part;
+                score += part * normalized(debt as u128, denominator as u128);
             }
             _ => return None,
         }
@@ -193,12 +217,29 @@ impl Snapshot {
                     let debt = unprotected_roots(roots)
                         .saturating_sub(projection.fewer_unprotected_rust_roots);
                     let denominator = unprotected_roots(initial).max(1);
-                    weight += 20;
-                    score += 20 * normalized(debt as u128, denominator as u128);
+                    let part = weights.weight("S2", 20);
+                    weight += part;
+                    score += part * normalized(debt as u128, denominator as u128);
                 }
             }
             (None, None) => {}
             _ => return None,
+        }
+        if let (Some(current), Some(initial)) = (&self.hygiene, &anchor.hygiene) {
+            for (key, part, observation) in current.scored(weights) {
+                let reference = initial.signals.get(key)?;
+                let projected = projection
+                    .hygiene
+                    .as_ref()
+                    .filter(|(id, _)| id == key)
+                    .map_or(0, |(_, gain)| *gain);
+                weight += part;
+                score += part
+                    * normalized(
+                        observation.debt.saturating_sub(projected).into(),
+                        reference.debt.max(1).into(),
+                    );
+            }
         }
         Some(score / weight)
     }
@@ -229,7 +270,13 @@ impl Snapshot {
     }
 
     pub fn comparable(&self, other: &Self) -> bool {
-        self.repo == other.repo
+        let evidence = match (&self.hygiene, &other.hygiene) {
+            (Some(a), Some(b)) => a.comparable(b),
+            (None, None) => true,
+            _ => false,
+        };
+        evidence
+            && self.repo == other.repo
             && self.environment == other.environment
             && self.policy == other.policy
             && self
