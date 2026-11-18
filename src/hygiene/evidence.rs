@@ -57,26 +57,7 @@ pub fn measure(
             1
         };
         let argv: Vec<_> = args[start..].iter().map(String::as_str).collect();
-        for argument in &argv {
-            let value = argument
-                .split_once('=')
-                .map_or(*argument, |(_, value)| value);
-            let path = repo.root.join(value);
-            if path.is_file() {
-                let resolved = path.canonicalize().code("EVIDENCE_TOOL")?;
-                if let Ok(relative) = resolved.strip_prefix(&repo.root)
-                    && !relative.to_str().is_some_and(crate::integrity::policy_path)
-                {
-                    return Err(Error::new(
-                        "CONFIG_INVALID",
-                        format!("Evidence argument references an unprotected input: {value}"),
-                    ));
-                }
-                let mut bytes = std::fs::File::open(resolved).code("EVIDENCE_TOOL")?;
-                hasher.update([0]);
-                std::io::copy(&mut bytes, &mut hasher).code("EVIDENCE_TOOL")?;
-            }
-        }
+        hash_arguments(repo, &argv, &mut hasher)?;
         let absolute = executable
             .to_str()
             .ok_or_else(|| Error::new("EVIDENCE_TOOL", "Evidence executable path is not UTF-8"))?;
@@ -95,6 +76,30 @@ pub fn measure(
             .scope
             .insert(format!("{id}.external"), format!("{:x}", hasher.finalize()));
         store(id, repo, tracked, measured, report)?;
+    }
+    Ok(())
+}
+
+fn hash_arguments(repo: &Repo, argv: &[&str], hasher: &mut Sha256) -> Result<()> {
+    for argument in argv {
+        let value = argument
+            .split_once('=')
+            .map_or(*argument, |(_, value)| value);
+        let path = repo.root.join(value);
+        if path.is_file() {
+            let resolved = path.canonicalize().code("EVIDENCE_TOOL")?;
+            if let Ok(relative) = resolved.strip_prefix(&repo.root)
+                && !relative.to_str().is_some_and(crate::integrity::policy_path)
+            {
+                return Err(Error::new(
+                    "CONFIG_INVALID",
+                    format!("Evidence argument references an unprotected input: {value}"),
+                ));
+            }
+            let mut bytes = std::fs::File::open(resolved).code("EVIDENCE_TOOL")?;
+            hasher.update([0]);
+            std::io::copy(&mut bytes, &mut *hasher).code("EVIDENCE_TOOL")?;
+        }
     }
     Ok(())
 }

@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#![forbid(unused_must_use)]
+#![forbid(unreachable_code)]
 
 mod cli;
 mod hygiene;

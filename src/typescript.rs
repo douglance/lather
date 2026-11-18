@@ -242,28 +242,7 @@ fn run_tests(repo: &Repo) -> Result<(Gate, Vec<String>, u64)> {
         .chain(files.iter().map(String::as_str))
         .collect();
     let output = process::run(&repo.root, "node", &args, LIMIT)?;
-    let mut counts = None;
-    let mut tests = BTreeSet::new();
-    for line in output.stdout.lines() {
-        let entry: Value = serde_json::from_str(line).code("OUTPUT_UNPARSEABLE")?;
-        if let Some(raw_counts) = entry.get("counts") {
-            counts = Some(
-                serde_json::from_value::<TestCounts>(raw_counts.clone())
-                    .code("OUTPUT_UNPARSEABLE")?,
-            );
-        } else if let (Some(file), Some(name)) = (entry["file"].as_str(), entry["name"].as_str()) {
-            let relative = Path::new(file)
-                .strip_prefix(&repo.root)
-                .code("OUTPUT_UNPARSEABLE")?;
-            tests.insert(format!("{}::{name}", relative.display()));
-        }
-    }
-    let counts = counts.ok_or_else(|| {
-        Error::new(
-            "OUTPUT_UNPARSEABLE",
-            "Node test run did not produce aggregate counts",
-        )
-    })?;
+    let (counts, tests) = read_test_results(&repo.root, &output.stdout)?;
     let debt = counts.failed + counts.cancelled;
     let result = if debt > 0 && output.status.code() == Some(1) {
         gate(
@@ -292,4 +271,30 @@ fn run_tests(repo: &Repo) -> Result<(Gate, Vec<String>, u64)> {
         tests.into_iter().collect(),
         counts.skipped + counts.todo,
     ))
+}
+
+fn read_test_results(root: &Path, stdout: &str) -> Result<(TestCounts, BTreeSet<String>)> {
+    let mut counts = None;
+    let mut tests = BTreeSet::new();
+    for line in stdout.lines() {
+        let entry: Value = serde_json::from_str(line).code("OUTPUT_UNPARSEABLE")?;
+        if let Some(raw_counts) = entry.get("counts") {
+            counts = Some(
+                serde_json::from_value::<TestCounts>(raw_counts.clone())
+                    .code("OUTPUT_UNPARSEABLE")?,
+            );
+        } else if let (Some(file), Some(name)) = (entry["file"].as_str(), entry["name"].as_str()) {
+            let relative = Path::new(file)
+                .strip_prefix(root)
+                .code("OUTPUT_UNPARSEABLE")?;
+            tests.insert(format!("{}::{name}", relative.display()));
+        }
+    }
+    let counts = counts.ok_or_else(|| {
+        Error::new(
+            "OUTPUT_UNPARSEABLE",
+            "Node test run did not produce aggregate counts",
+        )
+    })?;
+    Ok((counts, tests))
 }
