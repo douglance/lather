@@ -10,59 +10,7 @@ pub fn highest_gain(id: i64, tip: &Snapshot, anchor: &Snapshot) -> Option<Candid
 
     size_and_rust_debt(tip, anchor, current, max_diff, &mut options)?;
 
-    if let Some(flag) = tip
-        .strict_flags
-        .as_deref()
-        .and_then(strictness::next_option)
-        .filter(|_| max_diff >= 2)
-    {
-        let gain = tip
-            .projected_score(
-                anchor,
-                Projection {
-                    more_strict_flags: 1,
-                    ..Projection::default()
-                },
-            )?
-            .saturating_sub(current);
-        options.push((
-            gain,
-            2,
-            "tighten_typescript_option",
-            format!("tsconfig.json:{flag}"),
-            format!(
-                "Enable {flag} in the root compilerOptions and preserve the existing project scope",
-            ),
-        ));
-    }
-
-    if let Some(path) = tip
-        .rust_unsafe_policy
-        .as_ref()
-        .and_then(|roots| {
-            roots
-                .iter()
-                .find_map(|(path, enforced)| (!enforced).then_some(path))
-        })
-        .filter(|_| max_diff >= 2)
-    {
-        let gain = tip
-            .projected_score(
-                anchor,
-                Projection {
-                    fewer_unprotected_rust_roots: 1,
-                    ..Projection::default()
-                },
-            )?
-            .saturating_sub(current);
-        options.push((
-            gain,
-            2,
-            "forbid_unsafe_code",
-            path.clone(),
-            "Review unsafe usage and add #![forbid(unsafe_code)] to the crate root".into(),
-        ));
-    }
+    compiler_options(tip, anchor, current, max_diff, &mut options)?;
 
     if let Some(report) = &tip.hygiene {
         for (id, _, observation) in report.scored(&tip.policy.hygiene) {
@@ -243,6 +191,70 @@ fn size_and_rust_debt(
         options.push((gain, 8, "remove_unused_rust_item", format!("{}:{}", item.path, item.line), format!(
             "Rust reported {}. Confirm callers and other feature configurations before removing the item", item.message,
         )));
+    }
+
+    Some(())
+}
+
+fn compiler_options(
+    tip: &Snapshot,
+    anchor: &Snapshot,
+    current: u32,
+    max_diff: u32,
+    options: &mut Vec<Ranked>,
+) -> Option<()> {
+    if let Some(flag) = tip
+        .strict_flags
+        .as_deref()
+        .and_then(strictness::next_option)
+        .filter(|_| max_diff >= 2)
+    {
+        let gain = tip
+            .projected_score(
+                anchor,
+                Projection {
+                    more_strict_flags: 1,
+                    ..Projection::default()
+                },
+            )?
+            .saturating_sub(current);
+        options.push((
+            gain,
+            2,
+            "tighten_typescript_option",
+            format!("tsconfig.json:{flag}"),
+            format!(
+                "Enable {flag} in the root compilerOptions and preserve the existing project scope",
+            ),
+        ));
+    }
+
+    if let Some(path) = tip
+        .rust_unsafe_policy
+        .as_ref()
+        .and_then(|roots| {
+            roots
+                .iter()
+                .find_map(|(path, enforced)| (!enforced).then_some(path))
+        })
+        .filter(|_| max_diff >= 2)
+    {
+        let gain = tip
+            .projected_score(
+                anchor,
+                Projection {
+                    fewer_unprotected_rust_roots: 1,
+                    ..Projection::default()
+                },
+            )?
+            .saturating_sub(current);
+        options.push((
+            gain,
+            2,
+            "forbid_unsafe_code",
+            path.clone(),
+            "Review unsafe usage and add #![forbid(unsafe_code)] to the crate root".into(),
+        ));
     }
 
     Some(())
