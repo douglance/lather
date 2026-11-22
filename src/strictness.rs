@@ -12,6 +12,8 @@ pub const FLAGS: &[&str] = &[
     "useUnknownInCatchVariables",
     "noUncheckedIndexedAccess",
     "noImplicitOverride",
+    "isolatedModules",
+    "verbatimModuleSyntax",
     "noFallthroughCasesInSwitch",
     "exactOptionalPropertyTypes",
     "noImplicitReturns",

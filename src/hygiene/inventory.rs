@@ -142,7 +142,10 @@ fn manifest(path: &str, text: &str, report: &mut Report) -> Result<()> {
             path,
             &names,
             &[
-                ("HTTP client", &["axios", "got", "ky", "node-fetch"]),
+                (
+                    "HTTP client",
+                    &["axios", "got", "ky", "node-fetch", "ofetch", "wretch"],
+                ),
                 ("date and time", &["moment", "dayjs", "date-fns", "luxon"]),
                 (
                     "state management",
@@ -156,6 +159,37 @@ fn manifest(path: &str, text: &str, report: &mut Report) -> Result<()> {
                     ],
                 ),
                 ("test runner", &["jest", "vitest", "mocha", "ava", "tap"]),
+                // Community thread theme: one runtime-validation path at
+                // untrusted boundaries (often Zod). Inventory only; do not
+                // require a specific library.
+                (
+                    "runtime validation",
+                    &[
+                        "zod",
+                        "valibot",
+                        "arktype",
+                        "yup",
+                        "joi",
+                        "superstruct",
+                        "runtypes",
+                        "typia",
+                        "@sinclair/typebox",
+                        "io-ts",
+                    ],
+                ),
+                // Community thread theme: one way to fetch data.
+                (
+                    "data fetching",
+                    &[
+                        "@tanstack/react-query",
+                        "swr",
+                        "react-query",
+                        "@apollo/client",
+                        "urql",
+                        "@trpc/client",
+                        "relay-runtime",
+                    ],
+                ),
             ],
             report,
         );
@@ -163,7 +197,10 @@ fn manifest(path: &str, text: &str, report: &mut Report) -> Result<()> {
             let mut verify: Vec<_> = scripts
                 .keys()
                 .filter(|name| {
-                    matches!(name.as_str(), "verify" | "check" | "validate" | "test:e2e")
+                    matches!(
+                        name.as_str(),
+                        "verify" | "check" | "validate" | "test:e2e" | "lint:boundaries"
+                    )
                 })
                 .collect();
             verify.sort_unstable();
@@ -306,5 +343,46 @@ mod tests {
             workflow_checks("# cargo clippy\n      run: cargo test --locked"),
             ["S14"]
         );
+    }
+
+    #[test]
+    fn reports_parallel_runtime_validation_and_data_fetching_packages() {
+        let mut report = Report::default();
+        conventions(
+            "package.json",
+            &["zod", "valibot"].into_iter().collect(),
+            &[(
+                "runtime validation",
+                &["zod", "valibot", "arktype", "yup", "joi"],
+            )],
+            &mut report,
+        );
+        assert_eq!(report.signals["S21"].debt, 1);
+        assert!(
+            report.signals["S21"].findings[0]
+                .detail
+                .contains("runtime validation")
+        );
+
+        let mut single = Report::default();
+        conventions(
+            "package.json",
+            &["zod"].into_iter().collect(),
+            &[("runtime validation", &["zod", "valibot", "arktype"])],
+            &mut single,
+        );
+        assert!(single.signals.is_empty());
+
+        let mut fetching = Report::default();
+        conventions(
+            "package.json",
+            &["@tanstack/react-query", "swr"].into_iter().collect(),
+            &[(
+                "data fetching",
+                &["@tanstack/react-query", "swr", "@apollo/client"],
+            )],
+            &mut fetching,
+        );
+        assert_eq!(fetching.signals["S21"].debt, 1);
     }
 }
