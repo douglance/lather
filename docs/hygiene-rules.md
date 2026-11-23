@@ -33,6 +33,12 @@ and up to 256 finding locations.
 | S24 Unchecked failures | Score | Count unchecked production exits, unfinished macros and known placeholder comments | Count empty catch blocks, debugger statements and placeholder comments. Optionally ingest typed ESLint floating-promise diagnostics |
 | S25 Accessibility | Score | Use project evidence for a supported UI target | Check for missing `alt` on intrinsic `img` and `area` without a spread. Optionally ingest accessibility lints or project evidence |
 
+S9 findings show a closed dependency path with a reference line for each step.
+In the JSON snapshot, `hygiene.inventory` lists the full group of mutually
+dependent files and one representative loop per group in `S9.cycle_edges` and
+`S9.rust_module_cycle_edges`. Rust module evidence is available even when
+`rust_module_cycles` is disabled.
+
 A signal identified by a dotted suffix is a separate measured part of its parent
 rule. A configured weight applies to each scored part. Report-only proxies stay
 outside the score. A smaller instruction file, greater module depth, or more

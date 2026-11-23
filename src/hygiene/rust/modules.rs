@@ -63,19 +63,20 @@ pub fn measure(
     }
     let cycles = architecture::cycles(&module_edges);
     if enforce_cycles {
-        for part in &cycles {
-            report.record(
-                "S9",
-                part[0],
-                1,
-                format!("Rust module cycle among {}", part.join(", ")),
-                1,
-            );
+        for cycle in &cycles {
+            cycle.record(report, "Rust module cycle");
         }
     }
+    let members: Vec<_> = cycles.iter().map(|cycle| &cycle.members).collect();
     report
         .inventory
-        .insert("S9.rust_modules".into(), serde_json::json!(cycles));
+        .insert("S9.rust_modules".into(), serde_json::json!(members));
+    if !cycles.is_empty() {
+        report.inventory.insert(
+            "S9.rust_module_cycle_edges".into(),
+            serde_json::json!(cycles),
+        );
+    }
     for (path, module) in module_edges {
         if let Some(file) = facts.get_mut(&path) {
             file.module_edges.extend(module.edges);
