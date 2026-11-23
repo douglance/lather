@@ -8,7 +8,7 @@ and up to 256 finding locations.
 | Signal | Role | Rust | TypeScript and JavaScript |
 | --- | --- | --- | --- |
 | S1 Compiler | Gate | Cargo workspace and all-target compiler errors | Effective root TypeScript project, including JavaScript with `checkJs` |
-| S2 Strictness | Score and guard | Track unconditional `forbid(unsafe_code)` and crate-root or Cargo deny/forbid coverage for `unused_must_use` and `unreachable_code` | Count effective supported strict compiler options and guard their scope and settings |
+| S2 Strictness | Score and guard | Track unconditional `forbid(unsafe_code)` and crate-root or Cargo deny/forbid coverage for `unused_must_use` and `unreachable_code` | Count effective supported strict compiler options, including `isolatedModules` and `verbatimModuleSyntax` from [Matt Pocock's TSConfig cheat sheet](https://www.totaltypescript.com/tsconfig-cheat-sheet), and guard their scope and settings |
 | S3 Type escape hatches | Score | Count unsafe expressions, functions, trait declarations and implementations. Unchecked exits and lint exceptions are measured under S24 and S5 | Count explicit `any`, non-null assertions, double assertions through `unknown`, and TypeScript check overrides |
 | S4 Lint | Gate | Count Clippy errors and warnings. Compiler-reported dead code contributes to S12 | Run project ESLint and count its diagnostics |
 | S5 Suppressions | Score and guard | Count explicit `allow` and `expect` attributes, including those in `cfg_attr`. Guard existing tests and reject new suppressions and coverage exclusions | Count ESLint, Biome, Oxlint and Prettier suppression comments. Guard these, TypeScript directives and recognized coverage exclusions |
@@ -23,11 +23,11 @@ and up to 256 finding locations.
 | S14 Tests | Gate and guard | Run the test suite and guard existing tests and the ignored-test count | Run discovered tests and guard the existing test inventory and ignored-test count. Optionally guard against new Landmines testing findings |
 | S15 Coverage | Optional score and guard | Count uncovered lines and branches in an LLVM or project report. Reject a lower covered fraction | Count uncovered lines and branches in an Istanbul or project report. Reject a lower covered fraction |
 | S16 Feedback latency | Report | Record elapsed milliseconds for the gate phase | Same |
-| S17 Verification surface | Report | Inventory named hooks, common verification targets, workflow command markers and browser/simulator fixture paths | Also include matching package scripts and Storybook fixtures |
+| S17 Verification surface | Report | Inventory named hooks, common verification targets, workflow command markers and browser/simulator fixture paths | Also include matching package scripts, including `lint:boundaries` from [setup-ts-deep-modules](https://github.com/mattpocock/skills/blob/main/skills/in-progress/setup-ts-deep-modules/SKILL.md), and Storybook fixtures |
 | S18 Module depth | Report | Inventory source code lines and public visibility declarations per file | Inventory source code lines and top-level exports per file |
 | S19 Size | Score | Count lines above the configured file or function limit | Same |
 | S20 Comments | Report | Inventory code and comment lines and commented-out local declaration candidates | Same for parseable `let`, `const`, and `var` declarations |
-| S21 Conventions | Report | Inventory parallel HTTP, date/time, and async-runtime dependencies plus formatter configs | Inventory parallel HTTP, date/time, state, and test dependencies plus formatter configs |
+| S21 Conventions | Report | Inventory parallel HTTP, date/time, and async-runtime dependencies plus formatter configs | Inventory parallel HTTP, date/time, state, test, runtime-validation, and data-fetching dependencies plus formatter configs |
 | S22 Instructions | Report | Inspect root agent instruction size, recognized commands, local link targets and the `CLAUDE.md` pointer | Same |
 | S23 Formatting | Gate | Run rustfmt and record drift | Run Prettier and record drift |
 | S24 Unchecked failures | Score | Count unchecked production exits, unfinished macros and known placeholder comments | Count empty catch blocks, debugger statements and placeholder comments. Optionally ingest typed ESLint floating-promise diagnostics |
@@ -83,7 +83,8 @@ its intended design-system replacement in the project's guidance. Catalog policy
 changes and manifest edits belong in a new baseline epoch. Lather's verification
 loop keeps existing tests, policy inputs and score denominators fixed. Update the
 Lather binary and start a fresh epoch before comparing snapshots made with this
-catalog.
+catalog. TypeScript S2 flag additions bump `typescript-hygiene-catalog` so
+existing baselines stay incomparable until a new epoch starts.
 
 ### Evidence commands
 

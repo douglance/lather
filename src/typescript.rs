@@ -18,7 +18,7 @@ const PRETTIER: &str = "node_modules/prettier/bin/prettier.cjs";
 
 pub fn environment(repo: &Repo) -> String {
     let mut hash = Sha256::new();
-    hash.update(b"typescript-hygiene-catalog-v3\0");
+    hash.update(b"typescript-hygiene-catalog-v4\0");
     for args in [
         &["--version"][..],
         &[TSC, "--version"][..],
